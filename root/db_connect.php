@@ -3,11 +3,13 @@
  * Database Connection
  */
 
+$credentials = json_decode(file_get_contents("/etc/scheduler/db_info.conf"), true);
+
 // --- UPDATE WITH YOUR DATABASE DETAILS ---
-$db_host = '127.0.0.1';    // or 'localhost'
-$db_name = 'your_scheduler_db'; // The database name you created
-$db_user = 'your_username';     // Your database username
-$db_pass = 'your_password';     // Your database password
+$db_host = 'localhost';    // or 'localhost'
+$db_name = 'scheduler_db'; // The database name you created
+$db_user = $credentials["username"];     // Your database username
+$db_pass = $credentials["password"];     // Your database password
 // -----------------------------------------
 
 $charset = 'utf8mb4';

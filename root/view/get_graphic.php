@@ -1,6 +1,6 @@
 <?php
 // Include your database connection
-require_once 'db_connect.php'; 
+require_once '../db_connect.php'; 
 
 // 1. Get the requested tag from the URL
 $tag_name = $_GET['tag'] ?? '';
@@ -53,7 +53,7 @@ if ($active_event_asset) {
 
 // 6. Serve the file as an octet-stream
 if ($asset_to_serve) {
-    $file_path = __DIR__ . '/uploads/' . $asset_to_serve['filename_disk'];
+    $file_path = '/uploads/' . $asset_to_serve['filename_disk'];
 
     if (file_exists($file_path)) {
         // Set headers as requested

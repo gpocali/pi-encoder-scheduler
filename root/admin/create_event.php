@@ -30,7 +30,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $mime_type = $asset['type'];
     
     $safe_filename = uniqid('asset_', true) . '_' . preg_replace("/[^a-zA-Z0-9\._-]/", "", $original_filename);
-    $upload_dir = __DIR__ . '/../uploads/'; 
+    $upload_dir = '/uploads/'; 
     $upload_path = $upload_dir . $safe_filename;
 
     if (empty($errors)) {
