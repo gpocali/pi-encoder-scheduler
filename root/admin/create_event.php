@@ -42,14 +42,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 throw new Exception("Failed to move uploaded file. Check permissions on /uploads/ folder.");
             }
 
-            $sql_asset = "INSERT INTO assets (filename_disk, filename_original, mime_type) VALUES (?, ?, ?)";
+            $sql_asset = "INSERT INTO assets (filename_disk, filename_original, mime_type, md5_hash) VALUES (?, ?, ?, ?)";
             $stmt_asset = $pdo->prepare($sql_asset);
-            $stmt_asset->execute([$safe_filename, $original_filename, $mime_type]);
+            $stmt_asset->execute([$safe_filename, $original_filename, $mime_type, md5_file($upload_path)]);
             
             $new_asset_id = $pdo->lastInsertId();
 
-            $start_time_utc = (new DateTime($start_time))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-            $end_time_utc = (new DateTime($end_time))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+            $start_time_utc = (new DateTime($start_time))->setTimezone(new DateTimeZone('America/New_York'))->format('Y-m-d H:i:s');
+            $end_time_utc = (new DateTime($end_time))->setTimezone(new DateTimeZone('America/New_York'))->format('Y-m-d H:i:s');
             
             $sql_event = "INSERT INTO events (event_name, start_time, end_time, asset_id, tag_id) VALUES (?, ?, ?, ?, ?)";
             $stmt_event = $pdo->prepare($sql_event);

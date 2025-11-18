@@ -29,8 +29,8 @@ try {
         exit;
     }
 
-    $end_time = new DateTime($event['end_time'], new DateTimeZone('UTC'));
-    $now = new DateTime('now', new DateTimeZone('UTC'));
+    $end_time = new DateTime($event['end_time'], new DateTimeZone('America/New_York'));
+    $now = new DateTime('now', new DateTimeZone('America/New_York'));
     
     if ($end_time < $now) {
         $is_read_only = true;
@@ -97,8 +97,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !$is_read_only) {
 
     if (empty($errors)) {
         try {
-            $start_time_utc = (new DateTime($start_time))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-            $end_time_utc = (new DateTime($end_time))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+            $start_time_utc = (new DateTime($start_time))->setTimezone(new DateTimeZone('America/New_York'))->format('Y-m-d H:i:s');
+            $end_time_utc = (new DateTime($end_time))->setTimezone(new DateTimeZone('America/New_York'))->format('Y-m-d H:i:s');
 
             $sql_update = "UPDATE events 
                            SET event_name = ?, start_time = ?, end_time = ?, asset_id = ?, tag_id = ?
@@ -128,7 +128,7 @@ try {
 
 function format_utc_for_local_input($utc_datetime_str) {
     if (empty($utc_datetime_str)) return '';
-    $dt = new DateTime($utc_datetime_str, new DateTimeZone('UTC'));
+    $dt = new DateTime($utc_datetime_str, new DateTimeZone('America/New_York'));
     $dt->setTimezone(new DateTimeZone(date_default_timezone_get()));
     return $dt->format('Y-m-d\TH:i');
 }

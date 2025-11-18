@@ -7,7 +7,7 @@
 
 -- Set session variables for compatibility and UTC timezone
 SET NAMES utf8mb4;
-SET time_zone = 'Eastern Standard Time';
+SET time_zone = 'America/New_York';
 SET default_storage_engine = InnoDB;
 
 -- --------------------------------------------------------
@@ -51,6 +51,7 @@ CREATE TABLE `assets` (
   `filename_original` varchar(255) NOT NULL COMMENT 'Original filename from user upload',
   `mime_type` varchar(100) NOT NULL,
   `uploaded_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `md5_hash` varchar(32) NOT NULL,
   PRIMARY KEY (`id`)
 ) COMMENT='Stores metadata for all uploaded graphic files.';
 

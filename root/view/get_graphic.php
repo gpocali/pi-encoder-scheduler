@@ -10,7 +10,7 @@ if (empty($tag_name)) {
 }
 
 // 2. Get the current time in UTC (best for scheduling)
-$now = new DateTime('now', new DateTimeZone('UTC'));
+$now = new DateTime('now', new DateTimeZone('America/New_York'));
 $now_formatted = $now->format('Y-m-d H:i:s');
 
 // 3. Find an *active, scheduled event* for this tag
@@ -56,9 +56,10 @@ if ($asset_to_serve) {
     $file_path = '/uploads/' . $asset_to_serve['filename_disk'];
 
     if (file_exists($file_path)) {
+		$extension = pathinfo(basename($file_path), PATHINFO_EXTENSION);
         // Set headers as requested
         header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename="' . basename($file_path) . '"');
+        header('Content-Disposition: attachment; filename="' . strtolower($_REQUEST['tag']) . "." . $extension . '"');
         header('Content-Length: ' . filesize($file_path));
         header('Cache-Control: no-cache, no-store, must-revalidate'); 
         header('Pragma: no-cache');
