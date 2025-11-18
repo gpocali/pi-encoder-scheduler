@@ -36,7 +36,7 @@ if ($active_event_asset) {
 } else {
     // 5. No active event. Find the *default asset* for this tag.
     $sql_default = "
-        SELECT a.filename_disk, a.mime_type
+        SELECT a.filename_disk, a.mime_type, a.md5_hash
         FROM default_assets da
         JOIN assets a ON da.asset_id = a.id
         JOIN tags t ON da.tag_id = t.id
