@@ -13,16 +13,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         $pdo->beginTransaction();
         try {
-            // Prepared with NAMED parameters
             $sql = "
                 INSERT INTO default_assets (`tag_id`, `asset_id`) 
-                VALUES (:tag_id, :asset_id)
-                ON DUPLICATE KEY UPDATE `asset_id` = :asset_id
+                VALUES (:tag_id, :asset_id_ins)
+                ON DUPLICATE KEY UPDATE `asset_id` = :asset_id_upd
             ";
             $stmt_insert_update = $pdo->prepare($sql);
 
-            // Prepared with a NAMED parameter as well
-            $sql_delete = "DELETE FROM default_assets WHERE `tag_id` = :tag_id";
+            $sql_delete = "DELETE FROM default_assets WHERE `tag_id` = :tag_id_del";
             $stmt_delete = $pdo->prepare($sql_delete);
 
             foreach ($defaults_to_set as $tag_id => $asset_id) {
@@ -30,13 +28,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $asset_id_int = (int)$asset_id;
 
                 if ($asset_id_int > 0) {
-                    $stmt_insert_update->execute([
-                        ':tag_id' => $tag_id_int,
-                        ':asset_id' => $asset_id_int
-                    ]);
+                    // Use unique names and bindParam for clarity and compatibility
+                    $stmt_insert_update->bindValue(':tag_id', $tag_id_int, PDO::PARAM_INT);
+                    $stmt_insert_update->bindValue(':asset_id_ins', $asset_id_int, PDO::PARAM_INT);
+                    $stmt_insert_update->bindValue(':asset_id_upd', $asset_id_int, PDO::PARAM_INT);
+                    $stmt_insert_update->execute();
                 } else {
-                    // Execute using an associative array for the named parameter
-                    $stmt_delete->execute([':tag_id' => $tag_id_int]);
+                    $stmt_delete->execute([':tag_id_del' => $tag_id_int]);
                 }
             }
             
