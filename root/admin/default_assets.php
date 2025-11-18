@@ -13,31 +13,30 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         $pdo->beginTransaction();
         try {
-            // Prepare the INSERT/UPDATE statement once outside the loop
+            // Prepared with NAMED parameters
             $sql = "
                 INSERT INTO default_assets (`tag_id`, `asset_id`) 
                 VALUES (:tag_id, :asset_id)
                 ON DUPLICATE KEY UPDATE `asset_id` = :asset_id
             ";
-            $stmt_insert_update = $pdo->prepare($sql); // Renamed variable
+            $stmt_insert_update = $pdo->prepare($sql);
 
-            // Prepare the DELETE statement once outside the loop
-            $sql_delete = "DELETE FROM default_assets WHERE `tag_id` = ?";
-            $stmt_delete = $pdo->prepare($sql_delete); // New statement object
+            // Prepared with a NAMED parameter as well
+            $sql_delete = "DELETE FROM default_assets WHERE `tag_id` = :tag_id";
+            $stmt_delete = $pdo->prepare($sql_delete);
 
             foreach ($defaults_to_set as $tag_id => $asset_id) {
                 $tag_id_int = (int)$tag_id;
                 $asset_id_int = (int)$asset_id;
 
                 if ($asset_id_int > 0) {
-                    // Use the insert/update statement
                     $stmt_insert_update->execute([
                         ':tag_id' => $tag_id_int,
                         ':asset_id' => $asset_id_int
                     ]);
                 } else {
-                    // Use the dedicated delete statement
-                    $stmt_delete->execute([$tag_id_int]);
+                    // Execute using an associative array for the named parameter
+                    $stmt_delete->execute([':tag_id' => $tag_id_int]);
                 }
             }
             
