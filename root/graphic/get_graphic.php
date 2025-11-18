@@ -58,6 +58,7 @@ if ($asset_to_serve) {
     if (file_exists($file_path)) {
 		if(isset($_REQUEST['md5_hash'])){
 			echo $asset_to_serve['md5_hash'];
+			exit;
 		} else {
 			$extension = pathinfo(basename($file_path), PATHINFO_EXTENSION);
 			// Set headers as requested
