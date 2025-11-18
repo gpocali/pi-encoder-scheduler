@@ -56,19 +56,23 @@ if ($asset_to_serve) {
     $file_path = '/uploads/' . $asset_to_serve['filename_disk'];
 
     if (file_exists($file_path)) {
-		$extension = pathinfo(basename($file_path), PATHINFO_EXTENSION);
-        // Set headers as requested
-        header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename="' . strtolower($_REQUEST['tag']) . "." . $extension . '"');
-        header('Content-Length: ' . filesize($file_path));
-        header('Cache-Control: no-cache, no-store, must-revalidate'); 
-        header('Pragma: no-cache');
-        header('Expires: 0');
-        
-        ob_clean();
-        flush();
-        readfile($file_path);
-        exit;
+		if(isset($_REQUEST['md5_hash'])){
+			echo $asset_to_serve['md5_hash'];
+		} else {
+			$extension = pathinfo(basename($file_path), PATHINFO_EXTENSION);
+			// Set headers as requested
+			header('Content-Type: application/octet-stream');
+			header('Content-Disposition: attachment; filename="' . strtolower($_REQUEST['tag']) . "." . $extension . '"');
+			header('Content-Length: ' . filesize($file_path));
+			header('Cache-Control: no-cache, no-store, must-revalidate'); 
+			header('Pragma: no-cache');
+			header('Expires: 0');
+			
+			ob_clean();
+			flush();
+			readfile($file_path);
+			exit;
+		}
     }
 }
 
