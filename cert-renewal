@@ -1,0 +1,11 @@
+#!/bin/ash
+# Certbot renew and nginx restart
+# Via Crontab: 0       0       *       *       *       certRenewal
+
+apk add certbot certbot-nginx
+
+if [ ! -e /tmp/hls-data ]; then mkdir /tmp/hls-data; fi
+
+certbot run -d server01.streamwrhu.net --agree-tos -m wrhustatus@gmail.com -n --keep --nginx
+
+exit 0
