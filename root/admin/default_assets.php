@@ -14,9 +14,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $pdo->beginTransaction();
         try {
             $sql = "
-                INSERT INTO default_assets (tag_id, asset_id) 
+                INSERT INTO default_assets (`tag_id`, `asset_id`) 
                 VALUES (:tag_id, :asset_id)
-                ON DUPLICATE KEY UPDATE asset_id = :asset_id
+                ON DUPLICATE KEY UPDATE `asset_id` = :asset_id
             ";
             $stmt = $pdo->prepare($sql);
 
@@ -30,7 +30,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         ':asset_id' => $asset_id_int
                     ]);
                 } else {
-                    $sql_delete = "DELETE FROM default_assets WHERE tag_id = ?";
+                    $sql_delete = "DELETE FROM default_assets WHERE `tag_id` = ?";
                     $pdo->prepare($sql_delete)->execute([$tag_id_int]);
                 }
             }
@@ -46,13 +46,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 }
 
 try {
-    $tag_stmt = $pdo->query("SELECT id, tag_name FROM tags ORDER BY tag_name");
+    $tag_stmt = $pdo->query("SELECT `id`, `tag_name` FROM tags ORDER BY `tag_name`");
     $tags = $tag_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $asset_stmt = $pdo->query("SELECT id, filename_original FROM assets ORDER BY uploaded_at DESC");
+    $asset_stmt = $pdo->query("SELECT `id`, `filename_original` FROM assets ORDER BY `uploaded_at` DESC");
     $assets = $asset_stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    $default_stmt = $pdo->query("SELECT tag_id, asset_id FROM default_assets");
+    $default_stmt = $pdo->query("SELECT `tag_id`, `asset_id` FROM default_assets");
     $current_defaults_raw = $default_stmt->fetchAll(PDO::FETCH_KEY_PAIR); 
     
     $current_defaults = [];
