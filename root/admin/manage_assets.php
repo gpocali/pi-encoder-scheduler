@@ -166,6 +166,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
         if (!empty($blocking_reasons)) {
             $errors[] = "Cannot delete asset. It is currently in use by the following:<br><ul><li>" . implode("</li><li>", $blocking_reasons) . "</li></ul>";
         } else {
+            // Set asset_id to NULL for past events to satisfy FK constraint
+            $pdo->prepare("UPDATE events SET asset_id = NULL WHERE asset_id = ?")->execute([$asset_id]);
+            
             $file_path = '/uploads/' . $asset_to_del['filename_disk'];
             if (file_exists($file_path)) unlink($file_path);
             $pdo->prepare("DELETE FROM assets WHERE id = ?")->execute([$asset_id]);
