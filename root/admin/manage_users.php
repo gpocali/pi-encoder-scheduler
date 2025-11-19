@@ -59,7 +59,35 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         } else {
             $pdo->prepare("DELETE FROM users WHERE id = ?")->execute([$user_id]);
             $success_message = "User deleted.";
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        }
+    }
+
+    // Reset 2FA
+    if (isset($_POST['action']) && $_POST['action'] == 'reset_2fa') {
+        $user_id = (int)$_POST['user_id'];
+        $stmt = $pdo->prepare("UPDATE users SET totp_secret = NULL WHERE id = ?");
+        $stmt->execute([$user_id]);
+        $success_message = "2FA reset for user.";
+    }
+}
+
+// Fetch Users
+try {
+    $stmt = $pdo->query("SELECT * FROM users ORDER BY username");
+    $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    $errors[] = "Could not fetch users: " . $e->getMessage();
+    $users = [];
+}
+
+// Fetch Tags for assignment
+$tags = $pdo->query("SELECT * FROM tags ORDER BY tag_name")->fetchAll(PDO::FETCH_ASSOC);
+
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
     <title>Manage Users</title>
     <style>
         /* Basic Reset & Variables */
@@ -201,6 +229,31 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                 $stmt->execute([$user['id']]);
                                 $user_tags = $stmt->fetchAll(PDO::FETCH_COLUMN);
                                 echo "<br><small>Tags: " . implode(", ", $user_tags) . "</small>";
+                            }
+                        ?>
+                    </td>
+                    <td>
+                        <?php if ($user['id'] != $_SESSION['user_id']): ?>
+                        <form method="POST" onsubmit="return confirm('Delete this user?');" style="display:inline;">
+                            <input type="hidden" name="action" value="delete_user">
+                            <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
+                            <button type="submit" class="btn-delete">Delete</button>
+                        </form>
+                        <?php if ($user['totp_secret']): ?>
+                            <form method="POST" onsubmit="return confirm('Reset 2FA for this user?');" style="display:inline;">
+                                <input type="hidden" name="action" value="reset_2fa">
+                                <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
+                                <button type="submit" style="background:#ff9800; color:#000; padding:0.5em 1em; border:none; border-radius:4px; cursor:pointer;">Reset 2FA</button>
+                            </form>
+                        <?php endif; ?>
+                        <?php else: ?>
+                            <span style="color:#777;">(You)</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
     </div>
 
 </body>
