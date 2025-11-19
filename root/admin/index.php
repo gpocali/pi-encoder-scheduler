@@ -305,7 +305,7 @@ if ($view == 'list') {
                     $is_live = $status['type'] == 'event';
                     $thumb_url = '';
                     if ($asset) {
-                        $file_url = '../uploads/' . $asset['filename_disk'];
+                        $file_url = '/uploads/' . $asset['filename_disk'];
                         $is_img = strpos($asset['mime_type'], 'image') !== false;
                         $is_vid = strpos($asset['mime_type'], 'video') !== false;
                         // For video, we can't easily generate thumb in PHP without ffmpeg, so just show video tag or icon
@@ -315,9 +315,9 @@ if ($view == 'list') {
                 <div class="monitor-thumb" style="display:grid; place-items:center; overflow:hidden;">
                     <?php if ($asset): ?>
                         <?php if (strpos($asset['mime_type'], 'image') !== false): ?>
-                            <img src="../uploads/<?php echo $asset['filename_disk']; ?>" style="width:100%; height:100%; object-fit:cover;">
+                            <img src="/uploads/<?php echo $asset['filename_disk']; ?>" style="width:100%; height:100%; object-fit:cover;">
                         <?php elseif (strpos($asset['mime_type'], 'video') !== false): ?>
-                            <video src="../uploads/<?php echo $asset['filename_disk']; ?>" style="width:100%; height:100%; object-fit:cover;" muted loop autoplay></video>
+                            <video src="/uploads/<?php echo $asset['filename_disk']; ?>" style="width:100%; height:100%; object-fit:cover;" muted loop autoplay></video>
                         <?php else: ?>
                             <span style="color:#555;">No Preview</span>
                         <?php endif; ?>

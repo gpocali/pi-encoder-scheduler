@@ -24,7 +24,11 @@ $success_message = '';
 
 // Handle Scan & Index (Admin Only)
 if ($is_admin && isset($_POST['action']) && $_POST['action'] == 'scan_index') {
-    $upload_dir = '../uploads/';
+    $upload_dir = '/uploads/';
+    if (!is_dir($upload_dir)) {
+        mkdir($upload_dir, 0755, true);
+    }
+    
     if (is_dir($upload_dir)) {
         $files = scandir($upload_dir);
         $count_added = 0;
@@ -53,7 +57,7 @@ if ($is_admin && isset($_POST['action']) && $_POST['action'] == 'scan_index') {
         }
         $success_message = "Scan complete. Indexed $count_added new assets.";
     } else {
-        $errors[] = "Upload directory not found.";
+        $errors[] = "Could not create or access upload directory.";
     }
 }
 
@@ -95,7 +99,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                 $original_filename = basename($asset['name']);
                 $mime_type = $asset['type'];
                 $safe_filename = uniqid('asset_', true) . '_' . preg_replace("/[^a-zA-Z0-9\._-]/", "", $original_filename);
-                $upload_dir = '../uploads/';
+                $upload_dir = '/uploads/';
                 if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
                 
                 $upload_path = $upload_dir . $safe_filename;
@@ -141,7 +145,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
         if ($usage_count > 0 || $def_count > 0) {
             $errors[] = "Cannot delete asset: It is currently in use.";
         } else {
-            $file_path = '../uploads/' . $asset_to_del['filename_disk'];
+            $file_path = '/uploads/' . $asset_to_del['filename_disk'];
             if (file_exists($file_path)) unlink($file_path);
             $pdo->prepare("DELETE FROM assets WHERE id = ?")->execute([$asset_id]);
             $success_message = "Asset deleted.";
@@ -277,7 +281,7 @@ function formatBytes($bytes, $precision = 2) {
             <?php foreach ($assets as $asset): ?>
                 <div class="asset-card">
                     <?php 
-                        $file_url = '../uploads/' . $asset['filename_disk'];
+                        $file_url = '/uploads/' . $asset['filename_disk'];
                         $is_image = strpos($asset['mime_type'], 'image') !== false;
                         $is_video = strpos($asset['mime_type'], 'video') !== false;
                     ?>

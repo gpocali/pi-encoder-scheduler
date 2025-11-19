@@ -58,7 +58,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
             } else {
                 // Quota check would go here
                 $safe_filename = uniqid('asset_', true) . '_' . preg_replace("/[^a-zA-Z0-9\._-]/", "", basename($asset['name']));
-                $upload_path = '../uploads/' . $safe_filename;
+                $upload_path = '/uploads/' . $safe_filename;
                 move_uploaded_file($tmp_name, $upload_path);
                 $stmt_ins = $pdo->prepare("INSERT INTO assets (filename_disk, filename_original, mime_type, md5_hash, tag_id, uploaded_by, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
                 $stmt_ins->execute([$safe_filename, basename($asset['name']), $asset['type'], $md5, $event['tag_id'], $_SESSION['user_id'], $asset['size']]);
