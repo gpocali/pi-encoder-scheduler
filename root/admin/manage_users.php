@@ -88,43 +88,8 @@ $tags = $pdo->query("SELECT * FROM tags ORDER BY tag_name")->fetchAll(PDO::FETCH
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Manage Users</title>
-    <style>
-        /* Basic Reset & Variables */
-        :root {
-            --bg-color: #121212;
-            --card-bg: #1e1e1e;
-            --text-color: #e0e0e0;
-            --accent-color: #bb86fc;
-            --secondary-color: #03dac6;
-            --error-color: #cf6679;
-            --border-color: #333;
-        }
-        body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 2em; }
-        .container { max-width: 1000px; margin: 0 auto; }
-        a { color: var(--accent-color); text-decoration: none; }
-        h1, h2 { color: #fff; }
-        
-        /* Tables */
-        table { width: 100%; border-collapse: collapse; margin-top: 1em; background: var(--card-bg); border-radius: 8px; overflow: hidden; }
-        th, td { padding: 1em; text-align: left; border-bottom: 1px solid var(--border-color); }
-        th { background: #2c2c2c; font-weight: 600; }
-        
-        /* Forms */
-        .card { background: var(--card-bg); padding: 2em; border-radius: 8px; margin-bottom: 2em; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        .form-group { margin-bottom: 1em; }
-        label { display: block; margin-bottom: 0.5em; color: #aaa; }
-        input, select { width: 100%; padding: 0.8em; background: #2c2c2c; border: 1px solid var(--border-color); color: #fff; border-radius: 4px; }
-        button { padding: 0.8em 1.5em; background: var(--accent-color); color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        button:hover { opacity: 0.9; }
-        .btn-delete { background: var(--error-color); color: #fff; padding: 0.5em 1em; }
-
-        /* Utilities */
-        .message { padding: 1em; border-radius: 4px; margin-bottom: 1em; }
-        .error { background: rgba(207, 102, 121, 0.2); border: 1px solid var(--error-color); color: var(--error-color); }
-        .success { background: rgba(3, 218, 198, 0.2); border: 1px solid var(--secondary-color); color: var(--secondary-color); }
-        .tag-badge { display: inline-block; background: #333; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 4px; }
-    </style>
+    <title>Manage Users - WRHU Encoder Scheduler</title>
+    <link rel="stylesheet" href="style.css">
     <script>
         function generatePassword() {
             const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
@@ -148,8 +113,9 @@ $tags = $pdo->query("SELECT * FROM tags ORDER BY tag_name")->fetchAll(PDO::FETCH
 </head>
 <body>
 
+    <?php include 'navbar.php'; ?>
+
     <div class="container">
-        <a href="index.php">&larr; Back to Dashboard</a>
         <h1>Manage Users</h1>
 
         <?php if (!empty($errors)): ?>
@@ -196,7 +162,7 @@ $tags = $pdo->query("SELECT * FROM tags ORDER BY tag_name")->fetchAll(PDO::FETCH
                 </div>
 
                 <div class="form-group">
-                    <label>
+                    <label style="display: flex; align-items: center; gap: 10px;">
                         <input type="checkbox" name="can_change_password" style="width:auto;"> User can change their own password
                     </label>
                 </div>
@@ -233,19 +199,16 @@ $tags = $pdo->query("SELECT * FROM tags ORDER BY tag_name")->fetchAll(PDO::FETCH
                         ?>
                     </td>
                     <td>
+                        <a href="edit_user.php?id=<?php echo $user['id']; ?>" class="btn btn-sm btn-secondary" style="display:inline-block; width:auto; padding: 0.5em 1em; margin-right:5px; text-align:center;">Edit</a>
+                        
                         <?php if ($user['id'] != $_SESSION['user_id']): ?>
-                        <form method="POST" onsubmit="return confirm('Delete this user?');" style="display:inline;">
-                            <input type="hidden" name="action" value="delete_user">
-                            <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
-                            <button type="submit" class="btn-delete">Delete</button>
-                        </form>
-                        <?php if ($user['totp_secret']): ?>
-                            <form method="POST" onsubmit="return confirm('Reset 2FA for this user?');" style="display:inline;">
-                                <input type="hidden" name="action" value="reset_2fa">
-                                <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
-                                <button type="submit" style="background:#ff9800; color:#000; padding:0.5em 1em; border:none; border-radius:4px; cursor:pointer;">Reset 2FA</button>
-                            </form>
-                        <?php endif; ?>
+                            <?php if ($user['totp_secret']): ?>
+                                <form method="POST" onsubmit="return confirm('Reset 2FA for this user?');" style="display:inline;">
+                                    <input type="hidden" name="action" value="reset_2fa">
+                                    <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
+                                    <button type="submit" class="btn btn-sm" style="background:#ff9800; color:#000; margin-left:5px;">Reset 2FA</button>
+                                </form>
+                            <?php endif; ?>
                         <?php else: ?>
                             <span style="color:#777;">(You)</span>
                         <?php endif; ?>
@@ -255,6 +218,10 @@ $tags = $pdo->query("SELECT * FROM tags ORDER BY tag_name")->fetchAll(PDO::FETCH
             </tbody>
         </table>
     </div>
+
+    <footer>
+        &copy;<?php echo date("Y") > 2025 ? "2025-" . date("Y") : "2025"; ?> WRHU Radio Hofstra University. Written by Gregory Pocali for WRHU.
+    </footer>
 
 </body>
 </html>

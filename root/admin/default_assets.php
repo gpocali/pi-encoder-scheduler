@@ -57,33 +57,14 @@ try {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Manage Default Assets</title>
-    <style>
-        :root { --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #e0e0e0; --accent-color: #bb86fc; --secondary-color: #03dac6; --error-color: #cf6679; --border-color: #333; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 2em; }
-        .container { max-width: 800px; margin: 0 auto; }
-        a { color: var(--accent-color); text-decoration: none; }
-        h1 { color: #fff; }
-        
-        .card { background: var(--card-bg); padding: 2em; border-radius: 8px; margin-bottom: 2em; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 1em; text-align: left; border-bottom: 1px solid var(--border-color); }
-        th { background: #2c2c2c; }
-        
-        select { width: 100%; padding: 0.8em; background: #2c2c2c; border: 1px solid var(--border-color); color: #fff; border-radius: 4px; }
-        
-        button { display: block; width: 100%; padding: 1em; background: var(--accent-color); color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 1.5em; }
-        
-        .message { padding: 1em; border-radius: 4px; margin-bottom: 1em; }
-        .error { background: rgba(207, 102, 121, 0.2); border: 1px solid var(--error-color); color: var(--error-color); }
-        .success { background: rgba(3, 218, 198, 0.2); border: 1px solid var(--secondary-color); color: var(--secondary-color); }
-    </style>
+    <title>Manage Default Assets - WRHU Encoder Scheduler</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
+    <?php include 'navbar.php'; ?>
+
     <div class="container">
-        <a href="index.php">&larr; Back to Dashboard</a>
         <h1>Manage Default Assets</h1>
         <p style="color:#aaa;">Set the default graphic that will be shown for each tag when no event is scheduled.</p>
 
@@ -126,6 +107,10 @@ try {
             </form>
         </div>
     </div>
+
+    <footer>
+        &copy;<?php echo date("Y") > 2025 ? "2025-" . date("Y") : "2025"; ?> WRHU Radio Hofstra University. Written by Gregory Pocali for WRHU.
+    </footer>
 
 </body>
 </html>

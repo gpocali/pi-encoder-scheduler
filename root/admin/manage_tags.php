@@ -84,38 +84,13 @@ try {
 <head>
     <meta charset="UTF-8">
     <title>Manage Tags - WRHU Encoder Scheduler</title>
-    <style>
-        :root { --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #e0e0e0; --accent-color: #bb86fc; --secondary-color: #03dac6; --error-color: #cf6679; --border-color: #333; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 2em; display: flex; flex-direction: column; min-height: 100vh; }
-        .container { max-width: 1000px; margin: 0 auto; flex: 1; width: 100%; }
-        a { color: var(--accent-color); text-decoration: none; }
-        h1 { color: #fff; }
-        
-        .card { background: var(--card-bg); padding: 2em; border-radius: 8px; margin-bottom: 2em; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        
-        .form-group { margin-bottom: 1em; }
-        label { display: block; margin-bottom: 0.5em; color: #aaa; }
-        input { width: 100%; padding: 0.8em; background: #2c2c2c; border: 1px solid var(--border-color); color: #fff; border-radius: 4px; box-sizing: border-box; }
-        
-        button { padding: 0.8em 1.5em; background: var(--accent-color); color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .btn-delete { background: var(--error-color); color: #fff; padding: 0.5em 1em; }
-        .btn-update { background: var(--secondary-color); color: #000; padding: 0.5em 1em; }
-        
-        table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; }
-        th, td { padding: 1em; text-align: left; border-bottom: 1px solid var(--border-color); }
-        th { background: #2c2c2c; }
-        
-        .message { padding: 1em; border-radius: 4px; margin-bottom: 1em; }
-        .error { background: rgba(207, 102, 121, 0.2); border: 1px solid var(--error-color); color: var(--error-color); }
-        .success { background: rgba(3, 218, 198, 0.2); border: 1px solid var(--secondary-color); color: var(--secondary-color); }
-        
-        footer { text-align: center; margin-top: 2em; color: #777; font-size: 0.9em; padding: 1em; border-top: 1px solid var(--border-color); }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
+    <?php include 'navbar.php'; ?>
+
     <div class="container">
-        <a href="index.php">&larr; Back to Dashboard</a>
         <h1>Manage Output Tags</h1>
 
         <?php if (!empty($errors)): ?>
@@ -158,15 +133,15 @@ try {
                         <form action="manage_tags.php" method="POST" style="display:flex; gap:10px;">
                             <input type="hidden" name="action" value="update_tag">
                             <input type="hidden" name="tag_id" value="<?php echo $tag['id']; ?>">
-                            <input type="number" name="storage_limit_mb" value="<?php echo $tag['storage_limit_mb']; ?>" style="width:80px; padding:5px;">
-                            <button type="submit" class="btn-update">Save</button>
+                            <input type="number" name="storage_limit_mb" value="<?php echo $tag['storage_limit_mb']; ?>" style="width:80px; padding:5px; background:#2c2c2c; border:1px solid #333; color:#fff; border-radius:4px;">
+                            <button type="submit" class="btn-secondary btn-sm">Save</button>
                         </form>
                     </td>
                     <td>
                         <form action="manage_tags.php" method="POST" onsubmit="return confirm('Delete this tag?');">
                             <input type="hidden" name="action" value="delete_tag">
                             <input type="hidden" name="tag_id" value="<?php echo $tag['id']; ?>">
-                            <button type="submit" class="btn-delete">Delete</button>
+                            <button type="submit" class="btn-delete btn-sm">Delete</button>
                         </form>
                     </td>
                 </tr>

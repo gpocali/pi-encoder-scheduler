@@ -107,31 +107,7 @@ $all_assets = $pdo->query($sql_assets)->fetchAll(PDO::FETCH_ASSOC);
 <head>
     <meta charset="UTF-8">
     <title>Edit Event - WRHU Encoder Scheduler</title>
-    <style>
-        :root { --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #e0e0e0; --accent-color: #bb86fc; --secondary-color: #03dac6; --error-color: #cf6679; --border-color: #333; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 2em; display: flex; flex-direction: column; min-height: 100vh; }
-        .container { max-width: 800px; margin: 0 auto; flex: 1; width: 100%; }
-        a { color: var(--accent-color); text-decoration: none; }
-        
-        .card { background: var(--card-bg); padding: 2em; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        
-        .form-group { margin-bottom: 1.5em; }
-        label { display: block; margin-bottom: 0.5em; color: #aaa; font-weight: bold; }
-        input, select { width: 100%; padding: 0.8em; background: #2c2c2c; border: 1px solid var(--border-color); color: #fff; border-radius: 4px; box-sizing: border-box; }
-        
-        .row { display: flex; gap: 20px; }
-        .col { flex: 1; }
-        
-        .btn { display: block; width: 100%; padding: 1em; background: var(--accent-color); color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 1em; margin-bottom: 10px; }
-        .btn-delete { background: var(--error-color); color: #fff; }
-        .btn-duplicate { background: var(--secondary-color); color: #000; text-align: center; text-decoration: none; display: block; padding: 1em; border-radius: 4px; font-weight: bold; margin-bottom: 10px; }
-        
-        .message { padding: 1em; border-radius: 4px; margin-bottom: 1em; }
-        .error { background: rgba(207, 102, 121, 0.2); border: 1px solid var(--error-color); color: var(--error-color); }
-        .success { background: rgba(3, 218, 198, 0.2); border: 1px solid var(--secondary-color); color: var(--secondary-color); }
-        
-        footer { text-align: center; margin-top: 2em; color: #777; font-size: 0.9em; padding: 1em; border-top: 1px solid var(--border-color); }
-    </style>
+    <link rel="stylesheet" href="style.css">
     <script>
         function toggleAssetMode() {
             const mode = document.querySelector('input[name="asset_mode"]:checked').value;
@@ -142,8 +118,9 @@ $all_assets = $pdo->query($sql_assets)->fetchAll(PDO::FETCH_ASSOC);
 </head>
 <body>
 
+    <?php include 'navbar.php'; ?>
+
     <div class="container">
-        <a href="index.php">&larr; Back to Dashboard</a>
         <h1>Edit Event</h1>
 
         <?php if (!empty($errors)): ?>
@@ -220,12 +197,14 @@ $all_assets = $pdo->query($sql_assets)->fetchAll(PDO::FETCH_ASSOC);
                 <button type="submit" class="btn">Update Event</button>
             </form>
 
-            <a href="create_event.php?duplicate_id=<?php echo $event_id; ?>" class="btn-duplicate">Duplicate Event</a>
+            <div style="display:flex; gap:10px; margin-top:1em;">
+                <a href="create_event.php?duplicate_id=<?php echo $event_id; ?>" class="btn btn-secondary" style="text-align:center; flex:1;">Duplicate Event</a>
 
-            <form action="edit_event.php?id=<?php echo $event_id; ?>" method="POST" onsubmit="return confirm('Delete this event?');">
-                <input type="hidden" name="action" value="delete_event">
-                <button type="submit" class="btn btn-delete">Delete Event</button>
-            </form>
+                <form action="edit_event.php?id=<?php echo $event_id; ?>" method="POST" onsubmit="return confirm('Delete this event?');" style="flex:1;">
+                    <input type="hidden" name="action" value="delete_event">
+                    <button type="submit" class="btn-delete" style="width:100%;">Delete Event</button>
+                </form>
+            </div>
         </div>
     </div>
 

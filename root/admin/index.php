@@ -210,88 +210,11 @@ if ($view == 'list') {
 <head>
     <meta charset="UTF-8">
     <title>Dashboard - WRHU Encoder Scheduler</title>
-    <style>
-        :root { --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #e0e0e0; --accent-color: #bb86fc; --secondary-color: #03dac6; --error-color: #cf6679; --border-color: #333; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 0; display: flex; flex-direction: column; min-height: 100vh; }
-        
-        /* Navigation */
-        nav { background: #000; padding: 1em 2em; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); }
-        nav h1 { margin: 0; font-size: 1.2em; color: #fff; }
-        nav ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 20px; }
-        nav a { color: #aaa; text-decoration: none; font-weight: bold; transition: color 0.2s; }
-        nav a:hover, nav a.active { color: var(--accent-color); }
-        
-        .container { max-width: 1400px; margin: 0 auto; padding: 2em; width: 100%; box-sizing: border-box; flex: 1; }
-        
-        /* Live Monitor */
-        .live-monitor { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-bottom: 3em; }
-        .monitor-card { background: var(--card-bg); border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: 1px solid var(--border-color); position: relative; }
-        .monitor-thumb { width: 100%; height: 180px; object-fit: cover; background: #000; }
-        .monitor-info { padding: 1em; }
-        .monitor-tag { font-size: 0.9em; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
-        .monitor-title { font-size: 1.1em; font-weight: bold; color: #fff; margin-bottom: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.7em; font-weight: bold; text-transform: uppercase; }
-        .badge-live { background: var(--error-color); color: #fff; animation: pulse 2s infinite; }
-        .badge-default { background: #333; color: #aaa; }
-        
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
-
-        /* Controls */
-        .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1em; flex-wrap: wrap; gap: 10px; }
-        .filters { display: flex; gap: 10px; align-items: center; }
-        select, input[type="date"] { padding: 0.5em; background: #2c2c2c; border: 1px solid var(--border-color); color: #fff; border-radius: 4px; }
-        .btn { padding: 0.5em 1em; background: var(--accent-color); color: #000; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; font-weight: bold; }
-        .btn-create { background: var(--secondary-color); }
-        
-        /* Views */
-        .view-tabs { display: flex; gap: 5px; margin-bottom: 1em; }
-        .view-tab { padding: 0.5em 1em; background: #2c2c2c; color: #aaa; text-decoration: none; border-radius: 4px 4px 0 0; }
-        .view-tab.active { background: var(--card-bg); color: #fff; font-weight: bold; }
-        
-        /* List View */
-        table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; }
-        th, td { padding: 1em; text-align: left; border-bottom: 1px solid var(--border-color); }
-        th { background: #2c2c2c; }
-        tr:hover { background: #252525; }
-        
-        /* Calendar Grid (Month) */
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--border-color); border: 1px solid var(--border-color); }
-        .cal-day { background: var(--card-bg); min-height: 120px; padding: 5px; }
-        .cal-header { background: #2c2c2c; padding: 10px; text-align: center; font-weight: bold; }
-        .cal-date { font-size: 0.9em; color: #777; margin-bottom: 5px; }
-        .cal-event { background: #333; padding: 2px 5px; margin-bottom: 2px; border-radius: 2px; font-size: 0.8em; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; color: #e0e0e0; text-decoration: none; }
-        .cal-event.priority-2 { border-left: 3px solid var(--error-color); }
-        .cal-event.priority-1 { border-left: 3px solid var(--secondary-color); }
-        
-        /* Week View */
-        .week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
-        .week-col { background: var(--card-bg); min-height: 400px; padding: 10px; border-radius: 4px; }
-        
-        /* Footer */
-        footer { text-align: center; margin-top: 2em; color: #777; font-size: 0.9em; padding: 1em; border-top: 1px solid var(--border-color); background: #000; }
-        
-        .pagination { margin-top: 1em; display: flex; gap: 5px; justify-content: center; }
-        .page-link { padding: 5px 10px; background: #2c2c2c; color: #fff; text-decoration: none; border-radius: 4px; }
-        .page-link.active { background: var(--accent-color); color: #000; }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<nav>
-    <h1>WRHU Encoder Scheduler</h1>
-    <ul>
-        <li><a href="index.php" class="active">Dashboard</a></li>
-        <li><a href="create_event.php">Create Event</a></li>
-        <li><a href="manage_assets.php">Assets</a></li>
-        <?php if ($is_admin): ?>
-            <li><a href="manage_users.php">Users</a></li>
-            <li><a href="manage_tags.php">Tags</a></li>
-            <li><a href="default_assets.php">Defaults</a></li>
-        <?php endif; ?>
-        <li><a href="profile.php">Profile</a></li>
-        <li><a href="logout.php">Logout</a></li>
-    </ul>
-</nav>
+<?php include 'navbar.php'; ?>
 
 <div class="container">
     
@@ -308,8 +231,6 @@ if ($view == 'list') {
                         $file_url = '/uploads/' . $asset['filename_disk'];
                         $is_img = strpos($asset['mime_type'], 'image') !== false;
                         $is_vid = strpos($asset['mime_type'], 'video') !== false;
-                        // For video, we can't easily generate thumb in PHP without ffmpeg, so just show video tag or icon
-                        // For now, if it's image show it, if video show video element muted loop
                     }
                 ?>
                 <div class="monitor-thumb" style="display:grid; place-items:center; overflow:hidden;">
@@ -349,8 +270,8 @@ if ($view == 'list') {
     </div>
 
     <!-- Scheduler Controls -->
-    <div class="controls">
-        <form class="filters" method="GET">
+    <div class="controls" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1em; flex-wrap: wrap; gap: 10px;">
+        <form class="filters" method="GET" style="display: flex; gap: 10px; align-items: center;">
             <input type="hidden" name="view" value="<?php echo $view; ?>">
             <select name="tag_id" onchange="this.form.submit()">
                 <option value="">All Tags</option>
@@ -366,7 +287,7 @@ if ($view == 'list') {
             <?php endif; ?>
         </form>
         
-        <a href="create_event.php" class="btn btn-create">+ New Event</a>
+        <a href="create_event.php" class="btn btn-secondary">+ New Event</a>
     </div>
 
     <!-- View Tabs -->
@@ -496,7 +417,7 @@ if ($view == 'list') {
                             <div style="color:var(--accent-color);"><?php echo htmlspecialchars($ev['event_name']); ?></div>
                             <div style="font-size:0.9em; color:#888;">Tag: <?php echo htmlspecialchars($ev['tag_name']); ?> | Asset: <?php echo htmlspecialchars($ev['filename_original']); ?></div>
                         </div>
-                        <a href="edit_event.php?id=<?php echo $ev['id']; ?>" class="btn btn-sm" style="background:var(--secondary-color);">Edit</a>
+                        <a href="edit_event.php?id=<?php echo $ev['id']; ?>" class="btn btn-sm btn-secondary">Edit</a>
                     </div>
                 <?php endforeach; ?>
             <?php endif; ?>
