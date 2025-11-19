@@ -15,7 +15,7 @@ $now_formatted = $now->format('Y-m-d H:i:s');
 
 // 3. Find an *active, scheduled event* for this tag
 $sql = "
-    SELECT a.filename_disk, a.mime_type
+    SELECT a.filename_disk, a.mime_type, a.md5_hash
     FROM events e
     JOIN assets a ON e.asset_id = a.id
     JOIN tags t ON e.tag_id = t.id
@@ -28,7 +28,7 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute([$tag_name, $now_formatted]);
 $active_event_asset = $stmt->fetch(PDO::FETCH_ASSOC);
 
-<?php
+
 // Assuming $pdo and $tag_name are already defined and properly sanitized/validated.
 
 $asset_to_serve = null;
@@ -36,9 +36,11 @@ $target_asset_type = isset($_REQUEST['next']) ? 'next' : 'current';
 
 if ($target_asset_type === 'next') {
     // Logic to find the *next scheduled asset* for this tag.
+    // Note: The table name for scheduled events was changed from 'scheduled_events' to 'events'
+    // to match the table used in the top part of your script.
     $sql_target = "
         SELECT a.filename_disk, a.mime_type, a.md5_hash
-        FROM scheduled_events se
+        FROM events se
         JOIN assets a ON se.asset_id = a.id
         JOIN tags t ON se.tag_id = t.id
         WHERE t.tag_name = ? AND se.start_time > NOW()
@@ -52,7 +54,7 @@ if ($target_asset_type === 'next') {
 } else {
     // Logic to find the *current active or default asset*.
 
-    // First, check for an active event (assuming $active_event_asset is defined earlier in your script)
+    // First, check for an active event (which was retrieved in the top part of the script)
     if ($active_event_asset) {
         $asset_to_serve = $active_event_asset;
     } else {
@@ -72,7 +74,9 @@ if ($target_asset_type === 'next') {
 
 // 6. Serve the file or hash if an asset was found.
 if ($asset_to_serve) {
-    $file_path = '/uploads/' . $asset_to_serve['filename_disk'];
+    // Ensure the file path is correct for your environment.
+    // You might need a full path, e.g., $_SERVER['DOCUMENT_ROOT'] . '/uploads/' . ...
+    $file_path = '/uploads/' . $asset_to_serve['filename_disk']; 
 
     if (file_exists($file_path)) {
         if(isset($_REQUEST['md5_hash'])){
@@ -81,8 +85,11 @@ if ($asset_to_serve) {
         } else {
             // Serve the file as an octet-stream
             $extension = pathinfo(basename($file_path), PATHINFO_EXTENSION);
+            // Construct a meaningful filename for download
+            $download_filename = strtolower($tag_name) . ($target_asset_type === 'next' ? '_next' : '') . "." . $extension;
+
             header('Content-Type: application/octet-stream');
-            header('Content-Disposition: attachment; filename="' . strtolower($tag_name) . ($target_asset_type === 'next' ? '_next' : '') . "." . $extension . '"');
+            header('Content-Disposition: attachment; filename="' . $download_filename . '"');
             header('Content-Length: ' . filesize($file_path));
             header('Cache-Control: no-cache, no-store, must-revalidate'); 
             header('Pragma: no-cache');
