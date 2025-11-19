@@ -2,17 +2,12 @@
 require_once 'auth.php';
 require_once '../db_connect.php';
 
-// Check permissions: Admin and Full User can manage all assets. Tag Editor can only manage their tags.
-// For simplicity, let's allow all logged in users to view, but restrict actions based on role.
-// Actually, the prompt says "full user level... access asset edit functions... tag editor level which can only edit assets... for tags which they have been assigned".
-// So we need to filter the view for Tag Editors.
-
 $user_id = $_SESSION['user_id'];
 $is_admin = is_admin();
 $is_full_user = has_role('user');
 $is_tag_editor = has_role('tag_editor');
 
-// Fetch allowed tags for the user
+// Fetch allowed tags
 $allowed_tag_ids = [];
 if ($is_admin || $is_full_user) {
     $stmt = $pdo->query("SELECT id FROM tags");
@@ -22,14 +17,45 @@ if ($is_admin || $is_full_user) {
     $stmt->execute([$user_id]);
     $allowed_tag_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
 }
-
-// If no tags assigned to tag editor, they can't do much.
-if (empty($allowed_tag_ids) && $is_tag_editor) {
-    $allowed_tag_ids = [0]; // Prevent SQL error with empty IN clause
-}
+if (empty($allowed_tag_ids) && $is_tag_editor) $allowed_tag_ids = [0];
 
 $errors = [];
 $success_message = '';
+
+// Handle Scan & Index (Admin Only)
+if ($is_admin && isset($_POST['action']) && $_POST['action'] == 'scan_index') {
+    $upload_dir = '../uploads/';
+    if (is_dir($upload_dir)) {
+        $files = scandir($upload_dir);
+        $count_added = 0;
+        foreach ($files as $file) {
+            if ($file === '.' || $file === '..') continue;
+            $filepath = $upload_dir . $file;
+            if (is_file($filepath)) {
+                $md5 = md5_file($filepath);
+                // Check if exists
+                $stmt_check = $pdo->prepare("SELECT id FROM assets WHERE md5_hash = ?");
+                $stmt_check->execute([$md5]);
+                if (!$stmt_check->fetch()) {
+                    // Insert
+                    $mime_type = mime_content_type($filepath);
+                    $size = filesize($filepath);
+                    // Try to guess original filename from disk name if it has prefix
+                    // Format: asset_UNIQUEID_ORIGINAL
+                    $parts = explode('_', $file, 3);
+                    $original_name = count($parts) >= 3 ? $parts[2] : $file;
+                    
+                    $stmt_ins = $pdo->prepare("INSERT INTO assets (filename_disk, filename_original, mime_type, md5_hash, uploaded_by, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
+                    $stmt_ins->execute([$file, $original_name, $mime_type, $md5, $user_id, $size]);
+                    $count_added++;
+                }
+            }
+        }
+        $success_message = "Scan complete. Indexed $count_added new assets.";
+    } else {
+        $errors[] = "Upload directory not found.";
+    }
+}
 
 // Handle Upload
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'upload_asset') {
@@ -43,35 +69,33 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
         $asset = $_FILES['asset'];
         $tmp_name = $asset['tmp_name'];
         $md5 = md5_file($tmp_name);
+        $size_bytes = $asset['size'];
         
-        // Check for duplicates
         $stmt_check = $pdo->prepare("SELECT id FROM assets WHERE md5_hash = ?");
         $stmt_check->execute([$md5]);
         if ($stmt_check->fetch()) {
             $errors[] = "This file has already been uploaded.";
         } else {
-            // Check Quota
-            // "cap on the amount of files that are stored per tag"
-            // Let's get the limit for this tag
-            $stmt_limit = $pdo->prepare("SELECT asset_limit FROM tags WHERE id = ?");
+            // Check Storage Quota (MB)
+            $stmt_limit = $pdo->prepare("SELECT storage_limit_mb FROM tags WHERE id = ?");
             $stmt_limit->execute([$tag_id]);
-            $limit = $stmt_limit->fetchColumn();
+            $limit_mb = $stmt_limit->fetchColumn();
             
-            // Count current assets for this tag
-            $stmt_count = $pdo->prepare("SELECT COUNT(*) FROM assets WHERE tag_id = ?");
-            $stmt_count->execute([$tag_id]);
-            $current_count = $stmt_count->fetchColumn();
+            // Calculate current usage
+            $stmt_usage = $pdo->prepare("SELECT SUM(size_bytes) FROM assets WHERE tag_id = ?");
+            $stmt_usage->execute([$tag_id]);
+            $current_bytes = $stmt_usage->fetchColumn();
+            $current_mb = $current_bytes / (1024 * 1024);
             
-            if ($limit > 0 && $current_count >= $limit) {
-                $errors[] = "Asset limit reached for this tag (Limit: $limit). Please delete old assets first.";
+            $new_file_mb = $size_bytes / (1024 * 1024);
+            
+            if ($limit_mb > 0 && ($current_mb + $new_file_mb) > $limit_mb) {
+                $errors[] = "Storage limit reached for this tag (Limit: {$limit_mb} MB). Current usage: " . round($current_mb, 2) . " MB.";
             } else {
-                // Proceed with upload
                 $original_filename = basename($asset['name']);
                 $mime_type = $asset['type'];
-                $size_bytes = $asset['size'];
                 $safe_filename = uniqid('asset_', true) . '_' . preg_replace("/[^a-zA-Z0-9\._-]/", "", $original_filename);
-                $upload_dir = '../uploads/'; // Adjusted path relative to admin/
-                // Ensure dir exists
+                $upload_dir = '../uploads/';
                 if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
                 
                 $upload_path = $upload_dir . $safe_filename;
@@ -91,14 +115,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
 // Handle Delete
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'delete_asset') {
     $asset_id = (int)$_POST['asset_id'];
-    
-    // Verify ownership/permission
     $stmt_get = $pdo->prepare("SELECT * FROM assets WHERE id = ?");
     $stmt_get->execute([$asset_id]);
     $asset_to_del = $stmt_get->fetch(PDO::FETCH_ASSOC);
     
-    if ($asset_to_del && in_array($asset_to_del['tag_id'], $allowed_tag_ids)) {
-        // Check if used in events or defaults
+    // Allow delete if user has permission for the tag OR if tag is NULL (orphaned/indexed) and user is admin
+    $can_delete = false;
+    if ($asset_to_del) {
+        if ($asset_to_del['tag_id'] && in_array($asset_to_del['tag_id'], $allowed_tag_ids)) {
+            $can_delete = true;
+        } elseif (is_null($asset_to_del['tag_id']) && $is_admin) {
+            $can_delete = true;
+        }
+    }
+
+    if ($can_delete) {
         $stmt_usage = $pdo->prepare("SELECT COUNT(*) FROM events WHERE asset_id = ?");
         $stmt_usage->execute([$asset_id]);
         $usage_count = $stmt_usage->fetchColumn();
@@ -108,44 +139,43 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
         $def_count = $stmt_def->fetchColumn();
         
         if ($usage_count > 0 || $def_count > 0) {
-            $errors[] = "Cannot delete asset: It is currently in use by $usage_count events and $def_count defaults.";
+            $errors[] = "Cannot delete asset: It is currently in use.";
         } else {
-            // Delete file
             $file_path = '../uploads/' . $asset_to_del['filename_disk'];
-            if (file_exists($file_path)) {
-                unlink($file_path);
-            }
-            // Delete DB record
+            if (file_exists($file_path)) unlink($file_path);
             $pdo->prepare("DELETE FROM assets WHERE id = ?")->execute([$asset_id]);
             $success_message = "Asset deleted.";
         }
     } else {
-        $errors[] = "Asset not found or permission denied.";
+        $errors[] = "Permission denied.";
     }
 }
 
-// Fetch Assets (Filtered)
-// We need to handle the case where allowed_tag_ids is empty or has values
+// Fetch Assets
 $in_clause = implode(',', array_fill(0, count($allowed_tag_ids), '?'));
+// Include assets with NULL tag for Admins (indexed assets)
 $sql_assets = "
     SELECT a.*, t.tag_name, u.username 
     FROM assets a 
     LEFT JOIN tags t ON a.tag_id = t.id 
     LEFT JOIN users u ON a.uploaded_by = u.id 
     WHERE a.tag_id IN ($in_clause)
-    ORDER BY a.created_at DESC
 ";
+if ($is_admin) {
+    $sql_assets .= " OR a.tag_id IS NULL";
+}
+$sql_assets .= " ORDER BY a.created_at DESC";
+
 $stmt_assets = $pdo->prepare($sql_assets);
 $stmt_assets->execute($allowed_tag_ids);
 $assets = $stmt_assets->fetchAll(PDO::FETCH_ASSOC);
 
-// Fetch Tags for Upload Dropdown
+// Fetch Tags
 $sql_tags = "SELECT * FROM tags WHERE id IN ($in_clause) ORDER BY tag_name";
 $stmt_tags = $pdo->prepare($sql_tags);
 $stmt_tags->execute($allowed_tag_ids);
 $available_tags = $stmt_tags->fetchAll(PDO::FETCH_ASSOC);
 
-// Calculate Total Space Used
 $total_space = 0;
 foreach ($assets as $a) $total_space += $a['size_bytes'];
 function formatBytes($bytes, $precision = 2) { 
@@ -156,27 +186,16 @@ function formatBytes($bytes, $precision = 2) {
     $bytes /= pow(1024, $pow); 
     return round($bytes, $precision) . ' ' . $units[$pow]; 
 }
-
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Assets</title>
+    <title>Manage Assets - WRHU Encoder Scheduler</title>
     <style>
-        /* Reusing Dark Theme */
-        :root {
-            --bg-color: #121212;
-            --card-bg: #1e1e1e;
-            --text-color: #e0e0e0;
-            --accent-color: #bb86fc;
-            --secondary-color: #03dac6;
-            --error-color: #cf6679;
-            --border-color: #333;
-        }
-        body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 2em; }
-        .container { max-width: 1200px; margin: 0 auto; }
+        :root { --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #e0e0e0; --accent-color: #bb86fc; --secondary-color: #03dac6; --error-color: #cf6679; --border-color: #333; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 2em; display: flex; flex-direction: column; min-height: 100vh; }
+        .container { max-width: 1200px; margin: 0 auto; flex: 1; width: 100%; }
         a { color: var(--accent-color); text-decoration: none; }
         h1, h2 { color: #fff; }
         
@@ -185,8 +204,6 @@ function formatBytes($bytes, $precision = 2) {
         .stat-val { font-size: 2em; font-weight: bold; color: var(--secondary-color); }
         
         .upload-area { background: var(--card-bg); padding: 2em; border-radius: 8px; margin-bottom: 2em; border: 2px dashed var(--border-color); text-align: center; }
-        .upload-area:hover { border-color: var(--accent-color); }
-        
         .asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
         .asset-card { background: var(--card-bg); border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.2s; }
         .asset-card:hover { transform: translateY(-5px); }
@@ -196,12 +213,15 @@ function formatBytes($bytes, $precision = 2) {
         
         .btn { padding: 0.5em 1em; background: var(--accent-color); color: #000; border: none; border-radius: 4px; cursor: pointer; }
         .btn-delete { background: var(--error-color); color: #fff; width: 100%; margin-top: 0.5em; }
+        .btn-scan { background: var(--secondary-color); color: #000; margin-bottom: 1em; }
         
         .message { padding: 1em; border-radius: 4px; margin-bottom: 1em; }
         .error { background: rgba(207, 102, 121, 0.2); border: 1px solid var(--error-color); color: var(--error-color); }
         .success { background: rgba(3, 218, 198, 0.2); border: 1px solid var(--secondary-color); color: var(--secondary-color); }
         
         select, input[type="file"] { padding: 0.8em; background: #2c2c2c; border: 1px solid var(--border-color); color: #fff; border-radius: 4px; margin-bottom: 10px; }
+        
+        footer { text-align: center; margin-top: 2em; color: #777; font-size: 0.9em; padding: 1em; border-top: 1px solid var(--border-color); }
     </style>
 </head>
 <body>
@@ -211,11 +231,8 @@ function formatBytes($bytes, $precision = 2) {
         <h1>Asset Management</h1>
 
         <?php if (!empty($errors)): ?>
-            <div class="message error">
-                <ul><?php foreach ($errors as $e) echo "<li>$e</li>"; ?></ul>
-            </div>
+            <div class="message error"><ul><?php foreach ($errors as $e) echo "<li>$e</li>"; ?></ul></div>
         <?php endif; ?>
-        
         <?php if ($success_message): ?>
             <div class="message success"><?php echo $success_message; ?></div>
         <?php endif; ?>
@@ -230,6 +247,13 @@ function formatBytes($bytes, $precision = 2) {
                 <div>Total Space Used</div>
             </div>
         </div>
+
+        <?php if ($is_admin): ?>
+            <form method="POST" onsubmit="return confirm('Scan uploads folder for missing assets?');">
+                <input type="hidden" name="action" value="scan_index">
+                <button type="submit" class="btn btn-scan">Scan & Index Missing Assets</button>
+            </form>
+        <?php endif; ?>
 
         <div class="upload-area">
             <h2>Upload New Asset</h2>
@@ -270,12 +294,12 @@ function formatBytes($bytes, $precision = 2) {
                             <?php echo htmlspecialchars($asset['filename_original']); ?>
                         </div>
                         <div class="asset-meta">
-                            Tag: <?php echo htmlspecialchars($asset['tag_name']); ?><br>
+                            Tag: <?php echo htmlspecialchars($asset['tag_name'] ?? 'Unassigned'); ?><br>
                             Size: <?php echo formatBytes($asset['size_bytes']); ?><br>
-                            By: <?php echo htmlspecialchars($asset['username'] ?? 'Unknown'); ?><br>
+                            By: <?php echo htmlspecialchars($asset['username'] ?? 'System'); ?><br>
                             Date: <?php echo date('M j, Y', strtotime($asset['created_at'])); ?>
                         </div>
-                        <form method="POST" onsubmit="return confirm('Delete this asset? This cannot be undone.');">
+                        <form method="POST" onsubmit="return confirm('Delete this asset?');">
                             <input type="hidden" name="action" value="delete_asset">
                             <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
                             <button type="submit" class="btn btn-delete">Delete</button>
@@ -285,6 +309,10 @@ function formatBytes($bytes, $precision = 2) {
             <?php endforeach; ?>
         </div>
     </div>
+
+    <footer>
+        &copy;<?php echo date("Y") > 2025 ? "2025-" . date("Y") : "2025"; ?> WRHU Radio Hofstra University. Written by Gregory Pocali for WRHU.
+    </footer>
 
 </body>
 </html>

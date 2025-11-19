@@ -17,17 +17,28 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (empty($username) || empty($password)) {
         $error_message = "Username and password are required.";
     } else {
-        $sql = "SELECT id, username, password_hash, role, can_change_password FROM users WHERE username = ?";
+        $sql = "SELECT id, username, password_hash, role, can_change_password, totp_secret FROM users WHERE username = ?";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$username]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($user && password_verify($password, $user['password_hash'])) {
             session_regenerate_id(true); 
+            
+            // Check for 2FA
+            if (!empty($user['totp_secret'])) {
+                $_SESSION['partial_login'] = true;
+                $_SESSION['temp_user_id'] = $user['id'];
+                header("Location: verify_2fa.php");
+                exit;
+            }
+
+            // No 2FA, log in directly
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
             $_SESSION['role'] = $user['role'];
             $_SESSION['can_change_password'] = $user['can_change_password'];
+            
             header("Location: index.php");
             exit;
         } else {

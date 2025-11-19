@@ -59,27 +59,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         } else {
             $pdo->prepare("DELETE FROM users WHERE id = ?")->execute([$user_id]);
             $success_message = "User deleted.";
-        }
-    }
-
-    // Update User (Password/Role) - Simplified for now to just Password Reset & Role Toggle could be added here
-    // For this task, let's just stick to Create/Delete and maybe "Reset Password" if requested?
-    // The prompt asked for "admin should also have the ability to select weather each user can change their own password and a password generator"
-    // Let's add a simple "Update" modal or just delete/recreate? No, update is better.
-    // Let's just handle "Update Permissions" for now.
-}
-
-// Fetch Users
-$users = $pdo->query("SELECT * FROM users ORDER BY username")->fetchAll(PDO::FETCH_ASSOC);
-
-// Fetch Tags for assignment
-$tags = $pdo->query("SELECT * FROM tags ORDER BY tag_name")->fetchAll(PDO::FETCH_ASSOC);
-
-?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Users</title>
     <style>
@@ -222,24 +201,6 @@ $tags = $pdo->query("SELECT * FROM tags ORDER BY tag_name")->fetchAll(PDO::FETCH
                                 $stmt->execute([$user['id']]);
                                 $user_tags = $stmt->fetchAll(PDO::FETCH_COLUMN);
                                 echo "<br><small>Tags: " . implode(", ", $user_tags) . "</small>";
-                            }
-                        ?>
-                    </td>
-                    <td>
-                        <?php if ($user['id'] != $_SESSION['user_id']): ?>
-                        <form method="POST" onsubmit="return confirm('Delete this user?');" style="display:inline;">
-                            <input type="hidden" name="action" value="delete_user">
-                            <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
-                            <button type="submit" class="btn-delete">Delete</button>
-                        </form>
-                        <?php else: ?>
-                            <span style="color:#777;">(You)</span>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
     </div>
 
 </body>
