@@ -28,56 +28,75 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute([$tag_name, $now_formatted]);
 $active_event_asset = $stmt->fetch(PDO::FETCH_ASSOC);
 
-$asset_to_serve = null;
+<?php
+// Assuming $pdo and $tag_name are already defined and properly sanitized/validated.
 
-if ($active_event_asset) {
-    // 4. Found an active event! Use this asset.
-    $asset_to_serve = $active_event_asset;
-} else {
-    // 5. No active event. Find the *default asset* for this tag.
-    $sql_default = "
+$asset_to_serve = null;
+$target_asset_type = isset($_REQUEST['next']) ? 'next' : 'current';
+
+if ($target_asset_type === 'next') {
+    // Logic to find the *next scheduled asset* for this tag.
+    $sql_target = "
         SELECT a.filename_disk, a.mime_type, a.md5_hash
-        FROM default_assets da
-        JOIN assets a ON da.asset_id = a.id
-        JOIN tags t ON da.tag_id = t.id
-        WHERE t.tag_name = ?
+        FROM scheduled_events se
+        JOIN assets a ON se.asset_id = a.id
+        JOIN tags t ON se.tag_id = t.id
+        WHERE t.tag_name = ? AND se.start_time > NOW()
+        ORDER BY se.start_time ASC
+        LIMIT 1
     ";
-    $stmt_default = $pdo->prepare($sql_default);
-    $stmt_default->execute([$tag_name]);
-    $default_asset = $stmt_default->fetch(PDO::FETCH_ASSOC);
-    
-    if ($default_asset) {
-        $asset_to_serve = $default_asset;
+    $stmt_target = $pdo->prepare($sql_target);
+    $stmt_target->execute([$tag_name]);
+    $asset_to_serve = $stmt_target->fetch(PDO::FETCH_ASSOC);
+
+} else {
+    // Logic to find the *current active or default asset*.
+
+    // First, check for an active event (assuming $active_event_asset is defined earlier in your script)
+    if ($active_event_asset) {
+        $asset_to_serve = $active_event_asset;
+    } else {
+        // If no active event, find the *default asset* for this tag.
+        $sql_target = "
+            SELECT a.filename_disk, a.mime_type, a.md5_hash
+            FROM default_assets da
+            JOIN assets a ON da.asset_id = a.id
+            JOIN tags t ON da.tag_id = t.id
+            WHERE t.tag_name = ?
+        ";
+        $stmt_target = $pdo->prepare($sql_target);
+        $stmt_target->execute([$tag_name]);
+        $asset_to_serve = $stmt_target->fetch(PDO::FETCH_ASSOC);
     }
 }
 
-// 6. Serve the file as an octet-stream
+// 6. Serve the file or hash if an asset was found.
 if ($asset_to_serve) {
     $file_path = '/uploads/' . $asset_to_serve['filename_disk'];
 
     if (file_exists($file_path)) {
-		if(isset($_REQUEST['md5_hash'])){
-			echo $asset_to_serve['md5_hash'];
-			exit;
-		} else {
-			$extension = pathinfo(basename($file_path), PATHINFO_EXTENSION);
-			// Set headers as requested
-			header('Content-Type: application/octet-stream');
-			header('Content-Disposition: attachment; filename="' . strtolower($_REQUEST['tag']) . "." . $extension . '"');
-			header('Content-Length: ' . filesize($file_path));
-			header('Cache-Control: no-cache, no-store, must-revalidate'); 
-			header('Pragma: no-cache');
-			header('Expires: 0');
-			
-			ob_clean();
-			flush();
-			readfile($file_path);
-			exit;
-		}
+        if(isset($_REQUEST['md5_hash'])){
+            echo $asset_to_serve['md5_hash'];
+            exit;
+        } else {
+            // Serve the file as an octet-stream
+            $extension = pathinfo(basename($file_path), PATHINFO_EXTENSION);
+            header('Content-Type: application/octet-stream');
+            header('Content-Disposition: attachment; filename="' . strtolower($tag_name) . ($target_asset_type === 'next' ? '_next' : '') . "." . $extension . '"');
+            header('Content-Length: ' . filesize($file_path));
+            header('Cache-Control: no-cache, no-store, must-revalidate'); 
+            header('Pragma: no-cache');
+            header('Expires: 0');
+            
+            ob_clean();
+            flush();
+            readfile($file_path);
+            exit;
+        }
     }
 }
 
 // 7. Failsafe: If no asset is found, return a 404
 http_response_code(404);
-die('ERROR: No active or default asset found for tag: ' . htmlspecialchars($tag_name));
+die('ERROR: No ' . $target_asset_type . ' asset found for tag: ' . htmlspecialchars($tag_name));
 ?>
