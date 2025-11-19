@@ -10,11 +10,12 @@ if (empty($tag_name)) {
     die('ERROR: Tag parameter is missing.');
 }
 
-// 2. Get the current time in UTC (best for scheduling)
+// 2. Get the current time in America/New_York (match server time)
 $now = new DateTime('now', new DateTimeZone('America/New_York'));
 $now_formatted = $now->format('Y-m-d H:i:s');
 
 // 3. Find an *active, scheduled event* for this tag
+// This query also gets the md5_hash now, so we don't have to query again later
 $sql = "
     SELECT a.filename_disk, a.mime_type, a.md5_hash
     FROM events e
@@ -30,27 +31,46 @@ $stmt->execute([$tag_name, $now_formatted]);
 $active_event_asset = $stmt->fetch(PDO::FETCH_ASSOC);
 
 
-// Assuming $pdo and $tag_name are already defined and properly sanitized/validated.
-
+// Initialize variables
 $asset_to_serve = null;
 $target_asset_type = isset($_REQUEST['next']) ? 'next' : 'current';
 
 if ($target_asset_type === 'next') {
     // Logic to find the *next scheduled asset* for this tag.
-    // Note: The table name for scheduled events was changed from 'scheduled_events' to 'events'
-    // to match the table used in the top part of your script.
+
+    // Try to find the soonest future event
     $sql_target = "
         SELECT a.filename_disk, a.mime_type, a.md5_hash
         FROM events se
         JOIN assets a ON se.asset_id = a.id
         JOIN tags t ON se.tag_id = t.id
-        WHERE t.tag_name = ? AND se.start_time > NOW()
+        WHERE t.tag_name = ? AND se.start_time > ?
         ORDER BY se.start_time ASC
         LIMIT 1
     ";
     $stmt_target = $pdo->prepare($sql_target);
-    $stmt_target->execute([$tag_name]);
+    $stmt_target->execute([$tag_name, $now_formatted]);
     $asset_to_serve = $stmt_target->fetch(PDO::FETCH_ASSOC);
+
+    // If no future event is found, fall back to the default asset
+    if (!$asset_to_serve) {
+        $sql_default = "
+            SELECT a.filename_disk, a.mime_type, a.md5_hash
+            FROM default_assets da
+            JOIN assets a ON da.asset_id = a.id
+            JOIN tags t ON da.tag_id = t.id
+            WHERE t.tag_name = ?
+        ";
+        $stmt_default = $pdo->prepare($sql_default);
+        $stmt_default->execute([$tag_name]);
+        $asset_to_serve = $stmt_default->fetch(PDO::FETCH_ASSOC);
+        
+        if ($asset_to_serve) {
+            // Note for logging/debugging that the next asset is actually the default
+            // This information isn't sent to the client, but is useful internally
+            // echo "DEBUG: Serving default asset as the next asset.\n"; 
+        }
+    }
 
 } else {
     // Logic to find the *current active or default asset*.
@@ -76,7 +96,7 @@ if ($target_asset_type === 'next') {
 // 6. Serve the file or hash if an asset was found.
 if ($asset_to_serve) {
     // Ensure the file path is correct for your environment.
-    // You might need a full path, e.g., $_SERVER['DOCUMENT_ROOT'] . '/uploads/' . ...
+    // e.g., $_SERVER['DOCUMENT_ROOT'] . '/uploads/'
     $file_path = '/uploads/' . $asset_to_serve['filename_disk']; 
 
     if (file_exists($file_path)) {
@@ -104,7 +124,7 @@ if ($asset_to_serve) {
     }
 }
 
-// 7. Failsafe: If no asset is found, return a 404
+// 7. Failsafe: If no asset is found (no default exists, no events scheduled), return a 404
 http_response_code(404);
-die('ERROR: No ' . $target_asset_type . ' asset found for tag: ' . htmlspecialchars($tag_name));
+die('ERROR: No ' . $target_asset_type . ' asset found for tag: ' . htmlspecialchars($tag_name) . ' and no default set.');
 ?>
