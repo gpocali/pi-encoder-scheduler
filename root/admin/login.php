@@ -17,7 +17,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (empty($username) || empty($password)) {
         $error_message = "Username and password are required.";
     } else {
-        $sql = "SELECT id, username, password_hash FROM users WHERE username = ?";
+        $sql = "SELECT id, username, password_hash, role, can_change_password FROM users WHERE username = ?";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$username]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -26,6 +26,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             session_regenerate_id(true); 
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
+            $_SESSION['role'] = $user['role'];
+            $_SESSION['can_change_password'] = $user['can_change_password'];
             header("Location: index.php");
             exit;
         } else {

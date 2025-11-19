@@ -2,6 +2,8 @@
 require_once 'auth.php'; 
 require_once '../db_connect.php';
 
+require_role('admin');
+
 $errors = [];
 $success_message = '';
 
@@ -9,6 +11,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     if (isset($_POST['action']) && $_POST['action'] == 'create_tag') {
         $tag_name = trim($_POST['tag_name']);
+        $asset_limit = (int)$_POST['asset_limit'];
 
         if (empty($tag_name)) {
             $errors[] = "Tag name cannot be empty.";
@@ -19,13 +22,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $errors[] = "Tag '{$tag_name}' already exists.";
             } else {
                 try {
-                    $stmt_insert = $pdo->prepare("INSERT INTO tags (tag_name) VALUES (?)");
-                    $stmt_insert->execute([$tag_name]);
+                    $stmt_insert = $pdo->prepare("INSERT INTO tags (tag_name, asset_limit) VALUES (?, ?)");
+                    $stmt_insert->execute([$tag_name, $asset_limit]);
                     $success_message = "Tag '{$tag_name}' created successfully!";
                 } catch (Exception $e) {
                     $errors[] = "Error creating tag: " . $e->getMessage();
                 }
             }
+        }
+    }
+
+    if (isset($_POST['action']) && $_POST['action'] == 'update_tag') {
+        $tag_id = (int)$_POST['tag_id'];
+        $asset_limit = (int)$_POST['asset_limit'];
+        
+        try {
+            $stmt_upd = $pdo->prepare("UPDATE tags SET asset_limit = ? WHERE id = ?");
+            $stmt_upd->execute([$asset_limit, $tag_id]);
+            $success_message = "Tag updated successfully.";
+        } catch (Exception $e) {
+            $errors[] = "Error updating tag: " . $e->getMessage();
         }
     }
 
@@ -38,9 +54,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             
             $stmt_check_defaults = $pdo->prepare("SELECT id FROM default_assets WHERE tag_id = ? LIMIT 1");
             $stmt_check_defaults->execute([$tag_id]);
+            
+            $stmt_check_assets = $pdo->prepare("SELECT id FROM assets WHERE tag_id = ? LIMIT 1");
+            $stmt_check_assets->execute([$tag_id]);
 
-            if ($stmt_check_events->fetch() || $stmt_check_defaults->fetch()) {
-                $errors[] = "Cannot delete tag: It is currently assigned to one or more events or as a default asset.";
+            if ($stmt_check_events->fetch() || $stmt_check_defaults->fetch() || $stmt_check_assets->fetch()) {
+                $errors[] = "Cannot delete tag: It is currently assigned to events, assets, or defaults.";
             } else {
                 $stmt_delete = $pdo->prepare("DELETE FROM tags WHERE id = ?");
                 $stmt_delete->execute([$tag_id]);
@@ -53,7 +72,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 }
 
 try {
-    $tag_stmt = $pdo->query("SELECT id, tag_name FROM tags ORDER BY tag_name");
+    $tag_stmt = $pdo->query("SELECT * FROM tags ORDER BY tag_name");
     $tags = $tag_stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $errors[] = "Could not fetch tags: " . $e->getMessage();
@@ -64,90 +83,94 @@ try {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Tags</title>
     <style>
-        body { font-family: sans-serif; margin: 2em; background: #f4f4f4; }
-        .container { max-width: 800px; margin: 0 auto; padding: 2em; background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { text-align: center; }
+        :root { --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #e0e0e0; --accent-color: #bb86fc; --secondary-color: #03dac6; --error-color: #cf6679; --border-color: #333; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 2em; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        a { color: var(--accent-color); text-decoration: none; }
+        h1 { color: #fff; }
+        
+        .card { background: var(--card-bg); padding: 2em; border-radius: 8px; margin-bottom: 2em; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        
+        .form-group { margin-bottom: 1em; }
+        label { display: block; margin-bottom: 0.5em; color: #aaa; }
+        input { width: 100%; padding: 0.8em; background: #2c2c2c; border: 1px solid var(--border-color); color: #fff; border-radius: 4px; box-sizing: border-box; }
+        
+        button { padding: 0.8em 1.5em; background: var(--accent-color); color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-delete { background: var(--error-color); color: #fff; padding: 0.5em 1em; }
+        .btn-update { background: var(--secondary-color); color: #000; padding: 0.5em 1em; }
+        
+        table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 8px; overflow: hidden; }
+        th, td { padding: 1em; text-align: left; border-bottom: 1px solid var(--border-color); }
+        th { background: #2c2c2c; }
+        
         .message { padding: 1em; border-radius: 4px; margin-bottom: 1em; }
-        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .nav-link { display: inline-block; margin-bottom: 1em; }
-        
-        .tag-form { display: flex; gap: 10px; margin-bottom: 2em; }
-        .tag-form input[type="text"] { flex-grow: 1; padding: 0.8em; border: 1px solid #ccc; border-radius: 4px; }
-        .tag-form button { padding: 0.8em 1.5em; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        .tag-form button:hover { background-color: #0056b3; }
-        
-        .tag-table { width: 100%; border-collapse: collapse; }
-        .tag-table th, .tag-table td { padding: 0.8em; border: 1px solid #ddd; text-align: left; }
-        .tag-table th { background-color: #f9f9f9; }
-        .tag-table td:last-child { width: 100px; text-align: center; }
-        
-        .btn-delete { background: #dc3545; color: white; border: none; padding: 0.5em 1em; border-radius: 4px; cursor: pointer; }
-        .btn-delete:hover { background: #c82333; }
+        .error { background: rgba(207, 102, 121, 0.2); border: 1px solid var(--error-color); color: var(--error-color); }
+        .success { background: rgba(3, 218, 198, 0.2); border: 1px solid var(--secondary-color); color: var(--secondary-color); }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <a href="index.php" class="nav-link">&larr; Back to Dashboard</a>
+        <a href="index.php">&larr; Back to Dashboard</a>
         <h1>Manage Output Tags</h1>
-        <p>Tags (e.g., "Lower Third", "Main Screen") are used to link events to specific outputs.</p>
 
         <?php if (!empty($errors)): ?>
-            <div class="message error">
-                <strong>Error!</strong>
-                <ul>
-                    <?php foreach ($errors as $error): ?>
-                        <li><?php echo htmlspecialchars($error); ?></li>
-                    <?php endforeach; ?>
-                </ul>
-            </div>
+            <div class="message error"><ul><?php foreach ($errors as $e) echo "<li>$e</li>"; ?></ul></div>
         <?php endif; ?>
-
         <?php if ($success_message): ?>
-            <div class="message success">
-                <?php echo htmlspecialchars($success_message); ?>
-            </div>
+            <div class="message success"><?php echo $success_message; ?></div>
         <?php endif; ?>
 
-        <form class="tag-form" action="manage_tags.php" method="POST">
-            <input type="hidden" name="action" value="create_tag">
-            <input type="text" name="tag_name" placeholder="Enter new tag name" required>
-            <button type="submit">Create Tag</button>
-        </form>
-
-        <hr>
+        <div class="card">
+            <h2>Create New Tag</h2>
+            <form action="manage_tags.php" method="POST" style="display:flex; gap:10px; align-items:flex-end;">
+                <input type="hidden" name="action" value="create_tag">
+                <div style="flex-grow:1;">
+                    <label>Tag Name</label>
+                    <input type="text" name="tag_name" placeholder="e.g. Main Screen" required>
+                </div>
+                <div style="width:150px;">
+                    <label>Asset Limit (0=Unl)</label>
+                    <input type="number" name="asset_limit" value="0" min="0">
+                </div>
+                <button type="submit">Create</button>
+            </form>
+        </div>
 
         <h2>Existing Tags</h2>
-        <?php if (empty($tags)): ?>
-            <p>No tags created yet.</p>
-        <?php else: ?>
-            <table class="tag-table">
-                <thead>
-                    <tr>
-                        <th>Tag Name</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($tags as $tag): ?>
-                    <tr>
-                        <td><?php echo htmlspecialchars($tag['tag_name']); ?></td>
-                        <td>
-                            <form action="manage_tags.php" method="POST" onsubmit="return confirm('Are you sure you want to delete this tag?');">
-                                <input type="hidden" name="action" value="delete_tag">
-                                <input type="hidden" name="tag_id" value="<?php echo $tag['id']; ?>">
-                                <button type="submit" class="btn-delete">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        <?php endif; ?>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tag Name</th>
+                    <th>Asset Limit</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($tags as $tag): ?>
+                <tr>
+                    <td><?php echo htmlspecialchars($tag['tag_name']); ?></td>
+                    <td>
+                        <form action="manage_tags.php" method="POST" style="display:flex; gap:10px;">
+                            <input type="hidden" name="action" value="update_tag">
+                            <input type="hidden" name="tag_id" value="<?php echo $tag['id']; ?>">
+                            <input type="number" name="asset_limit" value="<?php echo $tag['asset_limit']; ?>" style="width:80px; padding:5px;">
+                            <button type="submit" class="btn-update">Save</button>
+                        </form>
+                    </td>
+                    <td>
+                        <form action="manage_tags.php" method="POST" onsubmit="return confirm('Delete this tag?');">
+                            <input type="hidden" name="action" value="delete_tag">
+                            <input type="hidden" name="tag_id" value="<?php echo $tag['id']; ?>">
+                            <button type="submit" class="btn-delete">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
     </div>
 
 </body>

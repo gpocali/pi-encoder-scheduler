@@ -2,24 +2,18 @@
 require_once 'auth.php'; 
 require_once '../db_connect.php';
 
+require_role('admin');
+
 $errors = [];
 $success_message = '';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    
     if (isset($_POST['defaults']) && is_array($_POST['defaults'])) {
-        
         $defaults_to_set = $_POST['defaults'];
-        
         $pdo->beginTransaction();
         try {
-            $sql = "
-                INSERT INTO default_assets (`tag_id`, `asset_id`) 
-                VALUES (:tag_id, :asset_id_ins)
-                ON DUPLICATE KEY UPDATE `asset_id` = :asset_id_upd
-            ";
+            $sql = "INSERT INTO default_assets (`tag_id`, `asset_id`) VALUES (:tag_id, :asset_id_ins) ON DUPLICATE KEY UPDATE `asset_id` = :asset_id_upd";
             $stmt_insert_update = $pdo->prepare($sql);
-
             $sql_delete = "DELETE FROM default_assets WHERE `tag_id` = :tag_id_del";
             $stmt_delete = $pdo->prepare($sql_delete);
 
@@ -28,7 +22,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $asset_id_int = (int)$asset_id;
 
                 if ($asset_id_int > 0) {
-                    // Use unique names and bindParam for clarity and compatibility
                     $stmt_insert_update->bindValue(':tag_id', $tag_id_int, PDO::PARAM_INT);
                     $stmt_insert_update->bindValue(':asset_id_ins', $asset_id_int, PDO::PARAM_INT);
                     $stmt_insert_update->bindValue(':asset_id_upd', $asset_id_int, PDO::PARAM_INT);
@@ -37,10 +30,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $stmt_delete->execute([':tag_id_del' => $tag_id_int]);
                 }
             }
-            
             $pdo->commit();
             $success_message = "Default assets updated successfully!";
-
         } catch (Exception $e) {
             $pdo->rollBack();
             $errors[] = "Database error: " . $e->getMessage();
@@ -49,91 +40,63 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 }
 
 try {
-    $tag_stmt = $pdo->query("SELECT `id`, `tag_name` FROM tags ORDER BY `tag_name`");
-    $tags = $tag_stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    $asset_stmt = $pdo->query("SELECT `id`, `filename_original` FROM assets ORDER BY `uploaded_at` DESC");
-    $assets = $asset_stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    $default_stmt = $pdo->query("SELECT `tag_id`, `asset_id` FROM default_assets");
-    $current_defaults_raw = $default_stmt->fetchAll(PDO::FETCH_KEY_PAIR); 
+    $tags = $pdo->query("SELECT `id`, `tag_name` FROM tags ORDER BY `tag_name`")->fetchAll(PDO::FETCH_ASSOC);
+    $assets = $pdo->query("SELECT `id`, `filename_original` FROM assets ORDER BY `uploaded_at` DESC")->fetchAll(PDO::FETCH_ASSOC);
+    $current_defaults_raw = $pdo->query("SELECT `tag_id`, `asset_id` FROM default_assets")->fetchAll(PDO::FETCH_KEY_PAIR); 
     
     $current_defaults = [];
     foreach ($tags as $tag) {
         $current_defaults[$tag['id']] = $current_defaults_raw[$tag['id']] ?? 0;
     }
-
 } catch (Exception $e) {
     $errors[] = "Could not fetch data: " . $e->getMessage();
-    $tags = [];
-    $assets = [];
-    $current_defaults = [];
+    $tags = []; $assets = []; $current_defaults = [];
 }
-
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Default Assets</title>
     <style>
-        body { font-family: sans-serif; margin: 2em; background: #f4f4f4; }
-        .container { max-width: 800px; margin: 0 auto; padding: 2em; background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { text-align: center; }
+        :root { --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #e0e0e0; --accent-color: #bb86fc; --secondary-color: #03dac6; --error-color: #cf6679; --border-color: #333; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 2em; }
+        .container { max-width: 800px; margin: 0 auto; }
+        a { color: var(--accent-color); text-decoration: none; }
+        h1 { color: #fff; }
+        
+        .card { background: var(--card-bg); padding: 2em; border-radius: 8px; margin-bottom: 2em; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 1em; text-align: left; border-bottom: 1px solid var(--border-color); }
+        th { background: #2c2c2c; }
+        
+        select { width: 100%; padding: 0.8em; background: #2c2c2c; border: 1px solid var(--border-color); color: #fff; border-radius: 4px; }
+        
+        button { display: block; width: 100%; padding: 1em; background: var(--accent-color); color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 1.5em; }
+        
         .message { padding: 1em; border-radius: 4px; margin-bottom: 1em; }
-        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .nav-link { display: inline-block; margin-bottom: 1em; }
-        
-        .default-table { width: 100%; border-collapse: collapse; margin-top: 1.5em; }
-        .default-table th, .default-table td {
-            padding: 0.8em;
-            border: 1px solid #ddd;
-            text-align: left;
-        }
-        .default-table th { background-color: #f9f9f9; }
-        .default-table td:first-child { font-weight: bold; width: 30%; }
-        .default-table select { width: 100%; padding: 0.5em; border-radius: 4px; border: 1px solid #ccc; }
-        
-        .btn { display: block; width: 100%; padding: 1em; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1em; margin-top: 1.5em; }
-        .btn:hover { background-color: #218838; }
-        
-        .no-data { text-align: center; color: #777; padding: 2em; }
+        .error { background: rgba(207, 102, 121, 0.2); border: 1px solid var(--error-color); color: var(--error-color); }
+        .success { background: rgba(3, 218, 198, 0.2); border: 1px solid var(--secondary-color); color: var(--secondary-color); }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <a href="index.php" class="nav-link">&larr; Back to Dashboard</a>
+        <a href="index.php">&larr; Back to Dashboard</a>
         <h1>Manage Default Assets</h1>
-        <p>Set the default graphic that will be shown for each tag when no event is scheduled.</p>
+        <p style="color:#aaa;">Set the default graphic that will be shown for each tag when no event is scheduled.</p>
 
         <?php if (!empty($errors)): ?>
-            <div class="message error">
-                <strong>Error!</strong>
-                <ul>
-                    <?php foreach ($errors as $error): ?>
-                        <li><?php echo htmlspecialchars($error); ?></li>
-                    <?php endforeach; ?>
-                </ul>
-            </div>
+            <div class="message error"><ul><?php foreach ($errors as $e) echo "<li>$e</li>"; ?></ul></div>
         <?php endif; ?>
-
         <?php if ($success_message): ?>
-            <div class="message success">
-                <?php echo htmlspecialchars($success_message); ?>
-            </div>
+            <div class="message success"><?php echo $success_message; ?></div>
         <?php endif; ?>
 
-        <?php if (empty($tags) || empty($assets)): ?>
-            <div class="no-data">
-                <p>You must create **Tags** and upload **Assets** before you can set defaults.</p>
-                <p>(Assets are uploaded when you create a new event.)</p>
-            </div>
-        <?php else: ?>
+        <div class="card">
             <form action="default_assets.php" method="POST">
-                <table class="default-table">
+                <table>
                     <thead>
                         <tr>
                             <th>Output Tag</th>
@@ -159,9 +122,9 @@ try {
                         <?php endforeach; ?>
                     </tbody>
                 </table>
-                <button type="submit" class="btn">Save All Defaults</button>
+                <button type="submit">Save All Defaults</button>
             </form>
-        <?php endif; ?>
+        </div>
     </div>
 
 </body>
