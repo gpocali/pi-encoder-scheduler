@@ -60,7 +60,27 @@ try {
         echo "Error creating 'user_tags' table: " . $e->getMessage() . "<br>";
     }
 
-    echo "<h3>Migration completed successfully!</h3>";
+    echo "<h3>Migration (Round 1) completed successfully!</h3>";
+
+    echo "<h2>Starting Migration (Round 2)...</h2>";
+
+    // 1. Update tags table (Asset Limit -> Storage Limit)
+    // We will keep asset_limit for now or rename it? The plan said "Change".
+    // Let's add storage_limit_mb and maybe deprecate asset_limit or keep both?
+    // User asked for "add units to the size limit... make it sound more like size constraint instead of asset count".
+    // So let's add `storage_limit_mb` and we can ignore `asset_limit` in the future.
+    addColumnIfNotExists($pdo, 'tags', 'storage_limit_mb', "INT NOT NULL DEFAULT 0");
+    echo "Added 'storage_limit_mb' to tags.<br>";
+
+    // 2. Update events table (Recurrence)
+    addColumnIfNotExists($pdo, 'events', 'parent_event_id', "INT NULL");
+    echo "Added 'parent_event_id' to events.<br>";
+
+    // 3. Update users table (2FA)
+    addColumnIfNotExists($pdo, 'users', 'totp_secret', "VARCHAR(255) NULL");
+    echo "Added 'totp_secret' to users.<br>";
+
+    echo "<h3>Migration (Round 2) completed successfully!</h3>";
 
 } catch (Exception $e) {
     echo "<h3>Fatal Error: " . $e->getMessage() . "</h3>";
