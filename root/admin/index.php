@@ -1,6 +1,7 @@
 <?php
 require_once 'auth.php'; 
 require_once '../db_connect.php'; 
+date_default_timezone_set('America/New_York');
 ?>
 <!DOCTYPE html>
 <html lang="en">

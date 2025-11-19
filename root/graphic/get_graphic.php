@@ -1,6 +1,7 @@
 <?php
 // Include your database connection
 require_once '../db_connect.php'; 
+date_default_timezone_set('America/New_York');
 
 // 1. Get the requested tag from the URL
 $tag_name = $_GET['tag'] ?? '';
