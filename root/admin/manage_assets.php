@@ -134,16 +134,37 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
     }
 
     if ($can_delete) {
-        $stmt_usage = $pdo->prepare("SELECT COUNT(*) FROM events WHERE asset_id = ?");
-        $stmt_usage->execute([$asset_id]);
-        $usage_count = $stmt_usage->fetchColumn();
-        
-        $stmt_def = $pdo->prepare("SELECT COUNT(*) FROM default_assets WHERE asset_id = ?");
+        $blocking_reasons = [];
+
+        // Check Default Assets
+        $stmt_def = $pdo->prepare("SELECT t.tag_name FROM default_assets da JOIN tags t ON da.tag_id = t.id WHERE da.asset_id = ?");
         $stmt_def->execute([$asset_id]);
-        $def_count = $stmt_def->fetchColumn();
+        $def_tags = $stmt_def->fetchAll(PDO::FETCH_COLUMN);
         
-        if ($usage_count > 0 || $def_count > 0) {
-            $errors[] = "Cannot delete asset: It is currently in use.";
+        if (!empty($def_tags)) {
+            foreach ($def_tags as $tag_name) {
+                $blocking_reasons[] = "Set as default asset for tag: " . htmlspecialchars($tag_name);
+            }
+        }
+
+        // Check Future/Current Events (Compare against UTC)
+        $now_utc = gmdate('Y-m-d H:i:s');
+        $stmt_usage = $pdo->prepare("SELECT event_name, start_time FROM events WHERE asset_id = ? AND end_time > ?");
+        $stmt_usage->execute([$asset_id, $now_utc]);
+        $active_events = $stmt_usage->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!empty($active_events)) {
+            foreach ($active_events as $ev) {
+                // Convert UTC start time to local for display
+                $start_local = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))
+                    ->setTimezone(new DateTimeZone('America/New_York'))
+                    ->format('M j, Y H:i');
+                $blocking_reasons[] = "Used in event: " . htmlspecialchars($ev['event_name']) . " (" . $start_local . ")";
+            }
+        }
+        
+        if (!empty($blocking_reasons)) {
+            $errors[] = "Cannot delete asset. It is currently in use by the following:<br><ul><li>" . implode("</li><li>", $blocking_reasons) . "</li></ul>";
         } else {
             $file_path = '/uploads/' . $asset_to_del['filename_disk'];
             if (file_exists($file_path)) unlink($file_path);
