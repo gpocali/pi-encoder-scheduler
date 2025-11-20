@@ -439,9 +439,9 @@ if ($view == 'list') {
 
 </div>
 
-<footer>
-    &copy;<?php echo date("Y") > 2025 ? "2025-" . date("Y") : "2025"; ?> WRHU Radio Hofstra University. Written by Gregory Pocali for WRHU.
-</footer>
+    <footer>
+        &copy;<?php echo date("Y") > 2025 ? "2025-" . date("Y") : "2025"; ?> WRHU Radio Hofstra University. Written by Gregory Pocali for WRHU with assistance from Google Gemini 3.
+    </footer>
 
 </body>
 </html>

@@ -120,7 +120,7 @@ $qr_img_url = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" .
     </div>
 
     <footer>
-        &copy;<?php echo date("Y") > 2025 ? "2025-" . date("Y") : "2025"; ?> WRHU Radio Hofstra University. Written by Gregory Pocali for WRHU.
+        &copy;<?php echo date("Y") > 2025 ? "2025-" . date("Y") : "2025"; ?> WRHU Radio Hofstra University. Written by Gregory Pocali for WRHU with assistance from Google Gemini 3.
     </footer>
 
 </body>
