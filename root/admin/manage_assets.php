@@ -284,7 +284,7 @@ function formatBytes($bytes, $precision = 2) {
             <?php foreach ($assets as $asset): ?>
                 <div class="card" style="padding: 1em; margin-bottom: 0;">
                     <?php 
-                        $file_url = '/uploads/' . $asset['filename_disk'];
+                        $file_url = 'serve_asset.php?id=' . $asset['id'];
                         $is_image = strpos($asset['mime_type'], 'image') !== false;
                         $is_video = strpos($asset['mime_type'], 'video') !== false;
                     ?>

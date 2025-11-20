@@ -228,7 +228,8 @@ if ($view == 'list') {
                     $is_live = $status['type'] == 'event';
                     $thumb_url = '';
                     if ($asset) {
-                        $file_url = '/uploads/' . $asset['filename_disk'];
+                        $asset_pk = $is_live ? $asset['asset_id'] : $asset['id'];
+                        $file_url = 'serve_asset.php?id=' . $asset_pk;
                         $is_img = strpos($asset['mime_type'], 'image') !== false;
                         $is_vid = strpos($asset['mime_type'], 'video') !== false;
                     }
@@ -236,9 +237,9 @@ if ($view == 'list') {
                 <div class="monitor-thumb" style="display:grid; place-items:center; overflow:hidden;">
                     <?php if ($asset): ?>
                         <?php if (strpos($asset['mime_type'], 'image') !== false): ?>
-                            <img src="/uploads/<?php echo $asset['filename_disk']; ?>" style="width:100%; height:100%; object-fit:cover;">
+                            <img src="<?php echo $file_url; ?>" style="width:100%; height:100%; object-fit:cover;">
                         <?php elseif (strpos($asset['mime_type'], 'video') !== false): ?>
-                            <video src="/uploads/<?php echo $asset['filename_disk']; ?>" style="width:100%; height:100%; object-fit:cover;" muted loop autoplay></video>
+                            <video src="<?php echo $file_url; ?>" style="width:100%; height:100%; object-fit:cover;" muted loop autoplay></video>
                         <?php else: ?>
                             <span style="color:#555;">No Preview</span>
                         <?php endif; ?>
