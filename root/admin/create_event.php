@@ -164,7 +164,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
             
             $pdo->commit();
-            $success_message = "Event(s) created successfully!";
+            header("Location: index.php");
+            exit;
         } catch (Exception $e) {
             $pdo->rollBack();
             $errors[] = "Database error: " . $e->getMessage();
