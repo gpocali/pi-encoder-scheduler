@@ -211,6 +211,12 @@ if ($view == 'list') {
     <meta charset="UTF-8">
     <title>Dashboard - WRHU Encoder Scheduler</title>
     <link rel="stylesheet" href="style.css">
+    <script>
+        // Auto-refresh every 60 seconds to update Live Monitor
+        setTimeout(function() {
+            window.location.reload();
+        }, 60000);
+    </script>
 </head>
 <body>
 
