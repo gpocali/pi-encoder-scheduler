@@ -75,6 +75,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $success_message = "Password reset successfully.";
         }
     }
+
+    if (isset($_POST['action']) && $_POST['action'] == 'reset_2fa') {
+        $stmt_2fa = $pdo->prepare("UPDATE users SET totp_secret = NULL WHERE id = ?");
+        $stmt_2fa->execute([$user_id]);
+        $success_message = "Two-Factor Authentication has been reset for this user.";
+        // Refresh user data
+        $stmt->execute([$user_id]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
 }
 
 ?>
@@ -160,8 +169,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <label>New Password</label>
                     <input type="text" name="new_password" placeholder="Enter new password" required>
                 </div>
-                <button type="submit" class="btn-secondary">Reset Password</button>
             </form>
+        </div>
+
+        <div class="card">
+            <h2>Security Settings</h2>
+            <p><strong>2FA Status:</strong> <?php echo !empty($user['totp_secret']) ? '<span style="color:var(--success-color);">Enabled</span>' : '<span style="color:#777;">Disabled</span>'; ?></p>
+            
+            <?php if (!empty($user['totp_secret'])): ?>
+                <form method="POST" onsubmit="return confirm('Are you sure you want to remove 2FA for this user?');">
+                    <input type="hidden" name="action" value="reset_2fa">
+                    <button type="submit" class="btn-secondary" style="background:#d9534f;">Remove 2FA</button>
+                </form>
+            <?php else: ?>
+                <p style="font-size:0.9em; color:#aaa;">User has not enabled 2FA.</p>
+            <?php endif; ?>
         </div>
 
         <?php if ($user_id != $_SESSION['user_id']): ?>
