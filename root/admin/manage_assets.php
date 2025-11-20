@@ -180,22 +180,36 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
 }
 
 // Fetch Assets
+// Filter Logic
+$filter_tag_id = isset($_GET['filter_tag']) && $_GET['filter_tag'] !== '' ? (int)$_GET['filter_tag'] : null;
+
+// Fetch Assets
 $in_clause = implode(',', array_fill(0, count($allowed_tag_ids), '?'));
-// Include assets with NULL tag for Admins (indexed assets)
+$params = $allowed_tag_ids;
+
 $sql_assets = "
     SELECT a.*, t.tag_name, u.username 
     FROM assets a 
     LEFT JOIN tags t ON a.tag_id = t.id 
     LEFT JOIN users u ON a.uploaded_by = u.id 
-    WHERE a.tag_id IN ($in_clause)
-";
+    WHERE (a.tag_id IN ($in_clause)";
+
 if ($is_admin) {
     $sql_assets .= " OR a.tag_id IS NULL";
 }
+$sql_assets .= ")";
+
+if ($filter_tag_id) {
+    if (in_array($filter_tag_id, $allowed_tag_ids)) {
+        $sql_assets .= " AND a.tag_id = ?";
+        $params[] = $filter_tag_id;
+    }
+}
+
 $sql_assets .= " ORDER BY a.created_at DESC";
 
 $stmt_assets = $pdo->prepare($sql_assets);
-$stmt_assets->execute($allowed_tag_ids);
+$stmt_assets->execute($params);
 $assets = $stmt_assets->fetchAll(PDO::FETCH_ASSOC);
 
 // Fetch Tags
@@ -279,7 +293,19 @@ function formatBytes($bytes, $precision = 2) {
         </div>
         <?php endif; ?>
 
-        <h2>Asset Library</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <h2>Asset Library</h2>
+            <form method="GET" style="display:flex; gap:10px;">
+                <select name="filter_tag" onchange="this.form.submit()" style="padding:5px;">
+                    <option value="">All Tags</option>
+                    <?php foreach ($available_tags as $tag): ?>
+                        <option value="<?php echo $tag['id']; ?>" <?php if($filter_tag_id == $tag['id']) echo 'selected'; ?>>
+                            <?php echo htmlspecialchars($tag['tag_name']); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </form>
+        </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
             <?php foreach ($assets as $asset): ?>
                 <div class="card" style="padding: 1em; margin-bottom: 0;">
