@@ -10,24 +10,23 @@ if (empty($tag_name)) {
     die('ERROR: Tag parameter is missing.');
 }
 
-// 2. Get the current time in America/New_York (match server time)
-$now = new DateTime('now', new DateTimeZone('America/New_York'));
-$now_formatted = $now->format('Y-m-d H:i:s');
+// 2. Get the current time in UTC (Database stores times in UTC)
+$now_utc = (new DateTime())->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
 // 3. Find an *active, scheduled event* for this tag
-// This query also gets the md5_hash now, so we don't have to query again later
+// Logic matches dashboard: Priority DESC, Start Time ASC
 $sql = "
-    SELECT a.filename_disk, a.mime_type, a.md5_hash
+    SELECT a.filename_disk, a.mime_type, a.md5_hash, a.filename_original
     FROM events e
     JOIN assets a ON e.asset_id = a.id
     JOIN tags t ON e.tag_id = t.id
     WHERE t.tag_name = ? 
-      AND ? BETWEEN e.start_time AND e.end_time
-    ORDER BY e.start_time DESC 
+      AND e.start_time <= ? AND e.end_time > ?
+    ORDER BY e.priority DESC, e.start_time ASC 
     LIMIT 1
 ";
 $stmt = $pdo->prepare($sql);
-$stmt->execute([$tag_name, $now_formatted]);
+$stmt->execute([$tag_name, $now_utc, $now_utc]);
 $active_event_asset = $stmt->fetch(PDO::FETCH_ASSOC);
 
 
@@ -37,10 +36,12 @@ $target_asset_type = isset($_REQUEST['next']) ? 'next' : 'current';
 
 if ($target_asset_type === 'next') {
     // Logic to find the *next scheduled asset* for this tag.
+    // This logic wasn't explicitly requested to match dashboard (dashboard doesn't show 'next'), 
+    // but we should update it to use UTC and Priority if applicable, or just Start Time.
+    // Usually 'next' means the one starting soonest after now.
 
-    // Try to find the soonest future event
     $sql_target = "
-        SELECT a.filename_disk, a.mime_type, a.md5_hash
+        SELECT a.filename_disk, a.mime_type, a.md5_hash, a.filename_original
         FROM events se
         JOIN assets a ON se.asset_id = a.id
         JOIN tags t ON se.tag_id = t.id
@@ -49,13 +50,13 @@ if ($target_asset_type === 'next') {
         LIMIT 1
     ";
     $stmt_target = $pdo->prepare($sql_target);
-    $stmt_target->execute([$tag_name, $now_formatted]);
+    $stmt_target->execute([$tag_name, $now_utc]);
     $asset_to_serve = $stmt_target->fetch(PDO::FETCH_ASSOC);
 
     // If no future event is found, fall back to the default asset
     if (!$asset_to_serve) {
         $sql_default = "
-            SELECT a.filename_disk, a.mime_type, a.md5_hash
+            SELECT a.filename_disk, a.mime_type, a.md5_hash, a.filename_original
             FROM default_assets da
             JOIN assets a ON da.asset_id = a.id
             JOIN tags t ON da.tag_id = t.id
@@ -64,24 +65,17 @@ if ($target_asset_type === 'next') {
         $stmt_default = $pdo->prepare($sql_default);
         $stmt_default->execute([$tag_name]);
         $asset_to_serve = $stmt_default->fetch(PDO::FETCH_ASSOC);
-        
-        if ($asset_to_serve) {
-            // Note for logging/debugging that the next asset is actually the default
-            // This information isn't sent to the client, but is useful internally
-            // echo "DEBUG: Serving default asset as the next asset.\n"; 
-        }
     }
 
 } else {
     // Logic to find the *current active or default asset*.
 
-    // First, check for an active event (which was retrieved in the top part of the script)
     if ($active_event_asset) {
         $asset_to_serve = $active_event_asset;
     } else {
         // If no active event, find the *default asset* for this tag.
         $sql_target = "
-            SELECT a.filename_disk, a.mime_type, a.md5_hash
+            SELECT a.filename_disk, a.mime_type, a.md5_hash, a.filename_original
             FROM default_assets da
             JOIN assets a ON da.asset_id = a.id
             JOIN tags t ON da.tag_id = t.id
@@ -96,7 +90,6 @@ if ($target_asset_type === 'next') {
 // 6. Serve the file or hash if an asset was found.
 if ($asset_to_serve) {
     // Ensure the file path is correct for your environment.
-    // e.g., $_SERVER['DOCUMENT_ROOT'] . '/uploads/'
     $file_path = '/uploads/' . $asset_to_serve['filename_disk']; 
 
     if (file_exists($file_path)) {
@@ -104,13 +97,18 @@ if ($asset_to_serve) {
             echo $asset_to_serve['md5_hash'];
             exit;
         } else {
-            // Serve the file as an octet-stream
-            $extension = pathinfo(basename($file_path), PATHINFO_EXTENSION);
-            // Construct a meaningful filename for download
-            $download_filename = strtolower($tag_name) . ($target_asset_type === 'next' ? '_next' : '') . "." . $extension;
-
-            header('Content-Type: application/octet-stream');
-            header('Content-Disposition: attachment; filename="' . $download_filename . '"');
+            // Serve the file
+            // Use the actual mime type if possible, or fallback to octet-stream if forced download is needed.
+            // User asked to match dashboard previews, which display the image.
+            // But this script might be used by an encoder that expects a download.
+            // Let's use the actual mime type but add Content-Disposition inline if it's viewable, or attachment if not?
+            // Actually, the previous code used application/octet-stream.
+            // I will switch to the real MIME type to be safe for "previews" but keep Content-Disposition.
+            
+            $mime_type = $asset_to_serve['mime_type'] ?: 'application/octet-stream';
+            
+            header('Content-Type: ' . $mime_type);
+            header('Content-Disposition: inline; filename="' . $asset_to_serve['filename_original'] . '"');
             header('Content-Length: ' . filesize($file_path));
             header('Cache-Control: no-cache, no-store, must-revalidate'); 
             header('Pragma: no-cache');
