@@ -161,7 +161,7 @@ if ($view == 'list') {
     
     // Group by day
     foreach ($raw_events as $ev) {
-        $day = (new DateTime($ev['start_time']))->setTimezone(new DateTimeZone('America/New_York'))->format('j');
+        $day = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('j');
         $events[$day][] = $ev;
     }
 
@@ -187,7 +187,7 @@ if ($view == 'list') {
 
     // Group by Date (Y-m-d)
     foreach ($raw_events as $ev) {
-        $date = (new DateTime($ev['start_time']))->setTimezone(new DateTimeZone('America/New_York'))->format('Y-m-d');
+        $date = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('Y-m-d');
         $events[$date][] = $ev;
     }
 } elseif ($view == 'day') {
@@ -321,8 +321,8 @@ if ($view == 'list') {
             </thead>
             <tbody>
                 <?php foreach ($events as $ev): 
-                    $start = new DateTime($ev['start_time']);
-                    $end = new DateTime($ev['end_time']);
+                    $start = new DateTime($ev['start_time'], new DateTimeZone('UTC'));
+                    $end = new DateTime($ev['end_time'], new DateTimeZone('UTC'));
                     $now = new DateTime(null, new DateTimeZone('UTC'));
                     
                     $status = 'Future';
@@ -374,7 +374,7 @@ if ($view == 'list') {
                     echo '<div class="cal-date">' . $d . '</div>';
                     if (isset($events[$d])) {
                         foreach ($events[$d] as $ev) {
-                            $time = (new DateTime($ev['start_time']))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
+                            $time = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
                             echo '<a href="edit_event.php?id='.$ev['id'].'" class="cal-event priority-'.$ev['priority'].'">'.$time.' '.$ev['event_name'].'</a>';
                         }
                     }
@@ -394,8 +394,8 @@ if ($view == 'list') {
                     
                     if (isset($events[$date_str])) {
                         foreach ($events[$date_str] as $ev) {
-                            $start = (new DateTime($ev['start_time']))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
-                            $end = (new DateTime($ev['end_time']))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
+                            $start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
+                            $end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
                             echo '<a href="edit_event.php?id='.$ev['id'].'" class="cal-event priority-'.$ev['priority'].'" style="padding:5px; margin-bottom:5px;">';
                             echo '<b>'.$start.'-'.$end.'</b><br>'.$ev['event_name'];
                             echo '</a>';
@@ -415,8 +415,8 @@ if ($view == 'list') {
                 <p style="color:#777;">No events scheduled for this day.</p>
             <?php else: ?>
                 <?php foreach ($events as $ev): 
-                    $start = (new DateTime($ev['start_time']))->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
-                    $end = (new DateTime($ev['end_time']))->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
+                    $start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
+                    $end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
                 ?>
                     <div style="padding:1em; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
                         <div>

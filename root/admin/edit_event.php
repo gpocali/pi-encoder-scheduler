@@ -92,8 +92,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
 }
 
 // Prepare Display Data
-$start_dt_local = (new DateTime($event['start_time']))->setTimezone(new DateTimeZone('America/New_York'));
-$end_dt_local = (new DateTime($event['end_time']))->setTimezone(new DateTimeZone('America/New_York'));
+$start_dt_local = (new DateTime($event['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
+$end_dt_local = (new DateTime($event['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
 
 $current_date = $start_dt_local->format('Y-m-d');
 $current_start_time = $start_dt_local->format('H:i');
