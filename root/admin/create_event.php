@@ -201,6 +201,57 @@ $default_end_time = $default_end->format('H:i');
             const val = document.getElementById('recurrence').value;
             document.getElementById('recur-until-group').style.display = val === 'none' ? 'none' : 'block';
         }
+
+        // Asset Filtering Logic
+        document.addEventListener('DOMContentLoaded', function() {
+            const tagSelect = document.getElementById('tag-select');
+            const assetSelect = document.getElementById('asset-select');
+            const assetSearch = document.getElementById('asset-search');
+            
+            // Store original options
+            const originalOptions = Array.from(assetSelect.options);
+
+            function filterAssets() {
+                const selectedTagId = tagSelect.value;
+                const searchText = assetSearch.value.toLowerCase();
+                
+                // Clear current options
+                assetSelect.innerHTML = '';
+                
+                originalOptions.forEach(opt => {
+                    // Always keep the placeholder
+                    if (opt.value === "") {
+                        assetSelect.appendChild(opt);
+                        return;
+                    }
+
+                    const assetTagId = opt.getAttribute('data-tag-id');
+                    const assetName = opt.text.toLowerCase();
+                    
+                    // Tag Match: Asset has same tag OR Asset has no tag (global/null)
+                    // Note: assetTagId might be empty string if null in DB
+                    const tagMatch = (assetTagId == selectedTagId) || (assetTagId === "");
+                    
+                    // Search Match
+                    const searchMatch = assetName.includes(searchText);
+                    
+                    if (tagMatch && searchMatch) {
+                        assetSelect.appendChild(opt);
+                    }
+                });
+                
+                // If current selection is hidden, reset to empty
+                if (assetSelect.selectedIndex === -1) {
+                    assetSelect.value = "";
+                }
+            }
+
+            tagSelect.addEventListener('change', filterAssets);
+            assetSearch.addEventListener('input', filterAssets);
+            
+            // Initial filter
+            filterAssets();
+        });
     </script>
 </head>
 <body>
@@ -269,7 +320,7 @@ $default_end_time = $default_end->format('H:i');
                     <div class="col">
                         <div class="form-group">
                             <label>Output Tag</label>
-                            <select name="tag_id" required>
+                            <select name="tag_id" id="tag-select" required>
                                 <?php foreach ($tags as $tag): ?>
                                     <option value="<?php echo $tag['id']; ?>" <?php if($tag['id'] == $tag_id) echo 'selected'; ?>>
                                         <?php echo htmlspecialchars($tag['tag_name']); ?>
@@ -302,10 +353,11 @@ $default_end_time = $default_end->format('H:i');
                     </div>
 
                     <div id="mode-existing">
+                        <input type="text" id="asset-search" placeholder="Search assets..." style="margin-bottom:5px; padding:5px; width:100%; box-sizing:border-box;">
                         <select name="existing_asset_id" id="asset-select">
-                            <option value="">-- Search/Select Asset --</option>
+                            <option value="">-- Select Asset --</option>
                             <?php foreach ($all_assets as $a): ?>
-                                <option value="<?php echo $a['id']; ?>" <?php if($a['id'] == $asset_id) echo 'selected'; ?>>
+                                <option value="<?php echo $a['id']; ?>" data-tag-id="<?php echo $a['tag_id']; ?>" <?php if($a['id'] == $asset_id) echo 'selected'; ?>>
                                     <?php echo htmlspecialchars($a['filename_original']); ?>
                                 </option>
                             <?php endforeach; ?>
