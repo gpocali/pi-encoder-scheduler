@@ -112,11 +112,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 
                 <div class="form-group">
                     <label>Role</label>
-                    <select name="role" id="role" onchange="toggleTags()">
-                        <option value="admin" <?php if($user['role'] == 'admin') echo 'selected'; ?>>Admin (Full Access)</option>
-                        <option value="user" <?php if($user['role'] == 'user') echo 'selected'; ?>>Full User (All Tags)</option>
-                        <option value="tag_editor" <?php if($user['role'] == 'tag_editor') echo 'selected'; ?>>Tag Editor (Restricted)</option>
-                    </select>
+                    <?php if ($user_id == $_SESSION['user_id']): ?>
+                        <input type="hidden" name="role" value="<?php echo $user['role']; ?>">
+                        <select disabled style="background: #333; color: #aaa;">
+                            <option value="admin" <?php if($user['role'] == 'admin') echo 'selected'; ?>>Admin (Full Access)</option>
+                            <option value="user" <?php if($user['role'] == 'user') echo 'selected'; ?>>Full User (All Tags)</option>
+                            <option value="tag_editor" <?php if($user['role'] == 'tag_editor') echo 'selected'; ?>>Tag Editor (Restricted)</option>
+                        </select>
+                        <small style="color: #777;">You cannot change your own role.</small>
+                    <?php else: ?>
+                        <select name="role" id="role" onchange="toggleTags()">
+                            <option value="admin" <?php if($user['role'] == 'admin') echo 'selected'; ?>>Admin (Full Access)</option>
+                            <option value="user" <?php if($user['role'] == 'user') echo 'selected'; ?>>Full User (All Tags)</option>
+                            <option value="tag_editor" <?php if($user['role'] == 'tag_editor') echo 'selected'; ?>>Tag Editor (Restricted)</option>
+                        </select>
+                    <?php endif; ?>
                 </div>
 
                 <div id="tag-selection" style="display: <?php echo ($user['role'] == 'tag_editor') ? 'block' : 'none'; ?>; margin-bottom: 1em; padding: 1em; background: #2c2c2c; border-radius: 4px;">
@@ -154,6 +164,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </form>
         </div>
 
+        <?php if ($user_id != $_SESSION['user_id']): ?>
         <div class="card">
             <h2>Danger Zone</h2>
             <form action="manage_users.php" method="POST" onsubmit="return confirm('Are you sure you want to delete this user? This cannot be undone.');">
@@ -162,6 +173,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <button type="submit" class="btn-delete">Delete User</button>
             </form>
         </div>
+        <?php endif; ?>
 
     </div>
 
