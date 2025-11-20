@@ -289,7 +289,7 @@ function formatBytes($bytes, $precision = 2) {
                         $is_video = strpos($asset['mime_type'], 'video') !== false;
                     ?>
                     
-                    <div style="height: 150px; background: #000; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; overflow: hidden; border-radius: 4px;">
+                    <div style="aspect-ratio: 16/9; width: 100%; background: #000; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; overflow: hidden; border-radius: 4px;">
                         <?php if ($is_image): ?>
                             <img src="<?php echo $file_url; ?>" style="width: 100%; height: 100%; object-fit: cover;">
                         <?php elseif ($is_video): ?>

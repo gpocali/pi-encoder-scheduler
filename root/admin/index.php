@@ -345,6 +345,12 @@ if ($view == 'list') {
                                 <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
                                 <button type="submit" style="background:none; border:none; color:var(--error-color); cursor:pointer; padding:0;">Delete</button>
                             </form>
+                        <?php else: ?>
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('End this event now?');">
+                                <input type="hidden" name="action" value="end_now">
+                                <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
+                                <button type="submit" style="background:var(--error-color); color:#fff; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:0.8em;">End Now</button>
+                            </form>
                         <?php endif; ?>
                     </td>
                 </tr>
