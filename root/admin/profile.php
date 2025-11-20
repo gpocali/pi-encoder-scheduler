@@ -56,63 +56,6 @@ $new_secret = TOTP::generateSecret();
 $qr_url = TOTP::getProvisioningUri($user['username'], $new_secret);
 $qr_img_url = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" . urlencode($qr_url);
 
-<?php
-require_once 'auth.php';
-require_once '../db_connect.php';
-require_once 'TOTP.php';
-
-$user_id = $_SESSION['user_id'];
-$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$user_id]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-$success = '';
-$error = '';
-
-// Enable 2FA
-if (isset($_POST['action']) && $_POST['action'] == 'enable_2fa') {
-    $secret = $_POST['secret'];
-    $code = $_POST['code'];
-    
-    if (TOTP::verify($secret, $code)) {
-        $stmt = $pdo->prepare("UPDATE users SET totp_secret = ? WHERE id = ?");
-        $stmt->execute([$secret, $user_id]);
-        $success = "2FA Enabled Successfully!";
-        $user['totp_secret'] = $secret; // Update local
-    } else {
-        $error = "Invalid code. 2FA not enabled.";
-    }
-}
-
-// Disable 2FA
-if (isset($_POST['action']) && $_POST['action'] == 'disable_2fa') {
-    $stmt = $pdo->prepare("UPDATE users SET totp_secret = NULL WHERE id = ?");
-    $stmt->execute([$user_id]);
-    $success = "2FA Disabled.";
-    $user['totp_secret'] = null;
-}
-
-// Change Password
-if (isset($_POST['action']) && $_POST['action'] == 'change_password') {
-    if (!$user['can_change_password']) {
-        $error = "You do not have permission to change your password.";
-    } else {
-        $new_pass = $_POST['new_password'];
-        if (strlen($new_pass) < 6) {
-            $error = "Password must be at least 6 characters.";
-        } else {
-            $hash = password_hash($new_pass, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
-            $stmt->execute([$hash, $user_id]);
-            $success = "Password updated.";
-        }
-    }
-}
-
-// Generate new secret for setup
-$new_secret = TOTP::generateSecret();
-$qr_url = TOTP::getProvisioningUri($user['username'], $new_secret);
-$qr_img_url = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" . urlencode($qr_url);
 
 ?>
 <!DOCTYPE html>
