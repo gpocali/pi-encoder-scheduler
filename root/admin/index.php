@@ -77,7 +77,7 @@ foreach ($tags as $tag) {
         ];
     } else {
         // Fallback to default
-        $sql_def = "SELECT a.filename_disk, a.filename_original, a.mime_type 
+        $sql_def = "SELECT a.id, a.filename_disk, a.filename_original, a.mime_type 
                     FROM default_assets da 
                     JOIN assets a ON da.asset_id = a.id 
                     WHERE da.tag_id = ?";
