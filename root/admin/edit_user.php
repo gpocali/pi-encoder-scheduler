@@ -169,6 +169,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <label>New Password</label>
                     <input type="text" name="new_password" placeholder="Enter new password" required>
                 </div>
+                <button type="submit" class="btn-secondary">Reset Password</button>
             </form>
         </div>
 
