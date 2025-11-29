@@ -112,28 +112,58 @@ function formatBytes($bytes, $precision = 2)
                 </div>
                 <div>Total Assets</div>
             </div>
-            <div class="card" style="flex: 1; text-align: center; margin-bottom:0;">
-                <div style="font-size: 2em; font-weight: bold; color: var(--secondary-color);">
-                    <?php
-                    if ($filter_tag_id) {
-                        $stmt_limit = $pdo->prepare("SELECT storage_limit_mb FROM tags WHERE id = ?");
-                        $stmt_limit->execute([$filter_tag_id]);
-                        $limit_mb = $stmt_limit->fetchColumn();
-                        if ($limit_mb > 0) {
-                            $percent = ($total_space / ($limit_mb * 1024 * 1024)) * 100;
-                            echo round($percent, 1) . '%';
-                        } else {
-                            echo formatBytes($total_space);
-                        }
-                    } else {
-                        echo formatBytes($total_space);
-                    }
-                    ?>
+            
+            <div class="card" style="flex: 2; margin-bottom:0; padding: 1em; display: flex; flex-direction: column;">
+                <h3 style="margin-top:0; margin-bottom:10px; font-size:1.1em; text-align:center;">Storage Usage per Tag</h3>
+                <div style="flex: 1; overflow-y: auto; max-height: 120px;">
+                    <table style="width:100%; font-size:0.9em; border-collapse: collapse;">
+                        <?php
+                        // Calculate usage per tag
+                        $sql_usage = "SELECT t.id, t.tag_name, t.storage_limit_mb, COALESCE(SUM(a.size_bytes), 0) as used_bytes 
+                                      FROM tags t 
+                                      LEFT JOIN asset_tags at ON t.id = at.tag_id 
+                                      LEFT JOIN assets a ON at.asset_id = a.id 
+                                      GROUP BY t.id 
+                                      ORDER BY t.tag_name";
+                        $stmt_usage = $pdo->query($sql_usage);
+                        $usage_data = $stmt_usage->fetchAll(PDO::FETCH_ASSOC);
+                        
+                        // Filter by available tags
+                        $available_tag_ids = array_column($available_tags, 'id');
+                        
+                        foreach ($usage_data as $row): 
+                            if (!in_array($row['id'], $available_tag_ids)) continue;
+
+                            $limit_bytes = $row['storage_limit_mb'] * 1024 * 1024;
+                            $used = $row['used_bytes'];
+                            $percent = ($limit_bytes > 0) ? round(($used / $limit_bytes) * 100, 1) : 0;
+                            
+                            // Color coding for usage
+                            $color = 'var(--secondary-color)';
+                            if ($limit_bytes > 0) {
+                                if ($percent >= 90) $color = 'var(--error-color)';
+                                elseif ($percent >= 70) $color = 'orange';
+                            }
+                        ?>
+                        <tr style="border-bottom: 1px solid #333;">
+                            <td style="padding: 5px;"><?php echo htmlspecialchars($row['tag_name']); ?></td>
+                            <td style="padding: 5px; text-align:right; font-weight:bold; color:<?php echo $color; ?>;">
+                                <?php if ($limit_bytes > 0): ?>
+                                    <?php echo $percent; ?>%
+                                <?php else: ?>
+                                    <span style="color:#aaa; font-weight:normal;">Unlimited</span>
+                                <?php endif; ?>
+                            </td>
+                            <td style="padding: 5px; text-align:right; color:#777; font-size:0.85em;">
+                                <?php echo formatBytes($used); ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </table>
                 </div>
-                <div>Total Storage Used</div>
             </div>
-            <div class="card"
-                style="flex: 1; display:flex; align-items:center; justify-content:center; margin-bottom:0;">
+
+            <div class="card" style="flex: 1; display:flex; align-items:center; justify-content:center; margin-bottom:0;">
                 <form method="GET" style="width:100%;">
                     <select name="filter_tag" onchange="this.form.submit()" style="width:100%; padding:10px;">
                         <option value="">All Tags</option>
