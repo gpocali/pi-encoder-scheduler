@@ -6,51 +6,65 @@ $current_page = basename($_SERVER['PHP_SELF']);
 $user_role = $_SESSION['role'] ?? 'guest';
 $user_id_nav = $_SESSION['user_id'] ?? 0;
 ?>
+<!-- Bootstrap Icons -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
 <nav class="navbar">
     <div class="container navbar-content" style="display:flex; justify-content:space-between; align-items:center;">
         <div style="display:flex; align-items:center; gap:20px;">
-            <a href="index.php" class="navbar-brand"
-                style="font-size:1.5em; font-weight:bold; color:var(--primary-color); text-decoration:none;">WRHU
-                Scheduler</a>
+            <a href="index.php" class="navbar-brand" style="font-size:1.5em; font-weight:bold; color:var(--primary-color); text-decoration:none;">
+                <i class="bi bi-broadcast"></i> WRHU Scheduler
+            </a>
             <ul class="navbar-nav" style="display:flex; gap:15px; list-style:none; margin:0; padding:0;">
-                <li><a href="index.php" class="<?php echo $current_page == 'index.php' ? 'active' : ''; ?>"
-                        style="color:#fff; text-decoration:none;">Dashboard</a></li>
-                <li><a href="manage_assets.php"
-                        class="<?php echo $current_page == 'manage_assets.php' ? 'active' : ''; ?>"
-                        style="color:#fff; text-decoration:none;">Assets</a></li>
-                <li><a href="create_event.php"
-                        class="<?php echo $current_page == 'create_event.php' ? 'active' : ''; ?>"
-                        style="color:#fff; text-decoration:none;">Create Event</a></li>
+                <li>
+                    <a href="index.php" class="<?php echo $current_page == 'index.php' ? 'active' : ''; ?>" style="color:#fff; text-decoration:none;">
+                        <i class="bi bi-speedometer2"></i> Dashboard
+                    </a>
+                </li>
+                <li>
+                    <a href="manage_assets.php" class="<?php echo $current_page == 'manage_assets.php' ? 'active' : ''; ?>" style="color:#fff; text-decoration:none;">
+                        <i class="bi bi-collection-play"></i> Assets
+                    </a>
+                </li>
+                <li>
+                    <a href="create_event.php" class="<?php echo $current_page == 'create_event.php' ? 'active' : ''; ?>" style="color:#fff; text-decoration:none;">
+                        <i class="bi bi-calendar-plus"></i> Create Event
+                    </a>
+                </li>
                 <?php if ($user_role === 'admin'): ?>
-                    <li><a href="users.php" class="<?php echo $current_page == 'users.php' ? 'active' : ''; ?>"
-                            style="color:#fff; text-decoration:none;">Users</a></li>
+                    <li>
+                        <a href="users.php" class="<?php echo $current_page == 'users.php' ? 'active' : ''; ?>" style="color:#fff; text-decoration:none;">
+                            <i class="bi bi-people"></i> Users
+                        </a>
+                    </li>
                 <?php endif; ?>
             </ul>
         </div>
-        <div class="navbar-user" style="display:flex; align-items:center; gap:10px;">
-            <span>Hello, <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?></span>
-            <button id="global-upload-btn" class="btn btn-sm"
-                style="background:var(--accent-color); border:none; color:#fff; cursor:pointer; padding:5px 10px; border-radius:4px;">Upload
-                Asset</button>
-            <a href="logout.php" class="btn btn-sm"
-                style="background:#d9534f; border:none; color:#fff; text-decoration:none; padding:5px 10px; border-radius:4px;">Logout</a>
+        <div class="navbar-user" style="display:flex; align-items:center; gap:15px;">
+            <span style="color:#aaa;"><i class="bi bi-person-circle"></i> <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?></span>
+            
+            <button id="global-upload-btn" class="btn btn-sm" style="background:var(--accent-color); border:none; color:#000; cursor:pointer; padding:5px 10px; border-radius:4px; font-weight:bold;">
+                <i class="bi bi-cloud-upload"></i> Upload Asset
+            </button>
+            
+            <a href="logout.php" style="color:#aaa; text-decoration:none; font-size:0.9em; display:flex; align-items:center; gap:5px;">
+                <i class="bi bi-box-arrow-right"></i> Logout
+            </a>
         </div>
     </div>
 </nav>
 
 <!-- Global Upload Modal -->
-<div id="globalUploadModal" class="modal"
-    style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.8);">
-    <div class="modal-content"
-        style="background-color:#222; margin:10% auto; padding:20px; border:1px solid #444; width:80%; max-width:600px; color:#fff; border-radius:8px;">
-        <span class="close" onclick="closeUploadModal()"
-            style="color:#aaa; float:right; font-size:28px; font-weight:bold; cursor:pointer;">&times;</span>
-        <h2>Upload Asset</h2>
+<div id="globalUploadModal" class="modal" style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.8);">
+    <div class="modal-content" style="background-color:#222; margin:10% auto; padding:20px; border:1px solid #444; width:80%; max-width:600px; color:#fff; border-radius:8px;">
+        <span class="close" onclick="closeUploadModal()" style="color:#aaa; float:right; font-size:28px; font-weight:bold; cursor:pointer;">&times;</span>
+        <h2><i class="bi bi-cloud-upload"></i> Upload Asset</h2>
         <form id="globalUploadForm" enctype="multipart/form-data">
             <div class="form-group" style="margin-bottom:15px;">
-                <label style="display:block; margin-bottom:5px;">Select Tags (Hold Ctrl/Cmd to select multiple)</label>
-                <div class="tag-toggle-group" id="globalTagGroup"
-                    style="display:flex; flex-wrap:wrap; gap:5px; max-height:150px; overflow-y:auto; padding:5px; border:1px solid #444; border-radius:4px;">
+                <label style="display:block; margin-bottom:5px;">Select Tags</label>
+                
+                <!-- Tag Buttons Container -->
+                <div class="tag-button-group" id="globalTagButtons" style="display:flex; flex-wrap:wrap; gap:8px; max-height:150px; overflow-y:auto; padding:5px; border:1px solid #444; border-radius:4px; background:#1a1a1a;">
                     <?php
                     // Ensure tags are available
                     if (!isset($tags)) {
@@ -68,23 +82,24 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
                     }
 
                     foreach ($tags_nav as $tag): ?>
-                        <label class="tag-toggle" onclick="this.classList.toggle('active');"
-                            style="padding:5px 10px; background:#333; border-radius:15px; cursor:pointer; user-select:none; border:1px solid #444;">
+                        <button type="button" class="tag-btn" data-id="<?php echo $tag['id']; ?>" onclick="toggleGlobalTag(this)" style="padding:6px 12px; background:#333; border:1px solid #555; color:#ccc; border-radius:20px; cursor:pointer; font-size:0.9em;">
                             <?php echo htmlspecialchars($tag['tag_name']); ?>
-                            <input type="checkbox" name="tag_ids[]" value="<?php echo $tag['id']; ?>" style="display:none;">
-                        </label>
+                        </button>
                     <?php endforeach; ?>
                 </div>
+                
+                <!-- Hidden Inputs Container -->
+                <div id="globalTagInputs"></div>
             </div>
+
             <div class="form-group" style="margin-bottom:15px;">
                 <label style="display:block; margin-bottom:5px;">File</label>
-                <input type="file" name="asset" required
-                    style="width:100%; padding:8px; background:#333; border:1px solid #444; color:#fff; border-radius:4px;">
+                <input type="file" name="asset" required style="width:100%; padding:8px; background:#333; border:1px solid #444; color:#fff; border-radius:4px;">
             </div>
-            <button type="submit" class="btn"
-                style="background:var(--accent-color); color:#fff; border:none; padding:10px 20px; border-radius:4px; cursor:pointer;">Upload</button>
-            <div id="uploadStatus" class="message"
-                style="display:none; margin-top:10px; padding:10px; border-radius:4px;"></div>
+            <button type="submit" class="btn" style="background:var(--accent-color); color:#000; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold;">
+                <i class="bi bi-upload"></i> Upload
+            </button>
+            <div id="uploadStatus" class="message" style="display:none; margin-top:10px; padding:10px; border-radius:4px;"></div>
         </form>
     </div>
 </div>
@@ -112,37 +127,57 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
         }
     }
 
-    function loadLastTags() {
-        const lastTags = JSON.parse(localStorage.getItem('lastUploadTags') || '[]');
-        const checkboxes = document.querySelectorAll('#globalTagGroup input[type="checkbox"]');
-        checkboxes.forEach(cb => {
-            if (lastTags.includes(cb.value)) {
-                cb.checked = true;
-                cb.parentElement.classList.add('active');
-                cb.parentElement.style.background = 'var(--accent-color)'; // Visual feedback
-            } else {
-                cb.checked = false;
-                cb.parentElement.classList.remove('active');
-                cb.parentElement.style.background = '#333';
-            }
-        });
+    // Tag Selection Logic
+    function toggleGlobalTag(btn) {
+        btn.classList.toggle('active');
+        updateGlobalTagStyles(btn);
+        updateGlobalHiddenInputs();
     }
 
-    // Add click listener for tag toggles to update style immediately
-    document.querySelectorAll('#globalTagGroup .tag-toggle').forEach(label => {
-        label.addEventListener('click', function () {
-            const cb = this.querySelector('input');
-            // Toggle is handled by inline onclick, but we need to update style
-            // Wait for inline to fire? No, inline fires first.
-            // Actually, inline onclick toggles 'active' class.
-            // We can use CSS for .active, but here we used inline styles.
-            if (this.classList.contains('active')) {
-                this.style.background = 'var(--accent-color)';
-            } else {
-                this.style.background = '#333';
-            }
+    function updateGlobalTagStyles(btn) {
+        if (btn.classList.contains('active')) {
+            btn.style.background = 'var(--accent-color)';
+            btn.style.color = '#000';
+            btn.style.borderColor = 'var(--accent-color)';
+            btn.style.fontWeight = 'bold';
+        } else {
+            btn.style.background = '#333';
+            btn.style.color = '#ccc';
+            btn.style.borderColor = '#555';
+            btn.style.fontWeight = 'normal';
+        }
+    }
+
+    function updateGlobalHiddenInputs() {
+        const container = document.getElementById('globalTagInputs');
+        container.innerHTML = '';
+        const activeBtns = document.querySelectorAll('#globalTagButtons .tag-btn.active');
+        activeBtns.forEach(btn => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'tag_ids[]';
+            input.value = btn.dataset.id;
+            container.appendChild(input);
         });
-    });
+        
+        // Save to local storage
+        const selectedIds = Array.from(activeBtns).map(btn => btn.dataset.id);
+        localStorage.setItem('lastUploadTags', JSON.stringify(selectedIds));
+    }
+
+    function loadLastTags() {
+        const lastTags = JSON.parse(localStorage.getItem('lastUploadTags') || '[]');
+        const buttons = document.querySelectorAll('#globalTagButtons .tag-btn');
+        buttons.forEach(btn => {
+            if (lastTags.includes(btn.dataset.id)) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+            updateGlobalTagStyles(btn);
+        });
+        updateGlobalHiddenInputs();
+    }
 
     // AJAX Upload
     document.getElementById('globalUploadForm').onsubmit = function (e) {
@@ -152,14 +187,7 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
         statusDiv.style.display = 'block';
         statusDiv.className = 'message';
         statusDiv.style.background = '#444';
-        statusDiv.innerHTML = 'Uploading...';
-
-        // Save tags
-        const selectedTags = [];
-        document.querySelectorAll('#globalTagGroup input[type="checkbox"]:checked').forEach(cb => {
-            selectedTags.push(cb.value);
-        });
-        localStorage.setItem('lastUploadTags', JSON.stringify(selectedTags));
+        statusDiv.innerHTML = '<i class="bi bi-hourglass-split"></i> Uploading...';
 
         fetch('api_upload.php', {
             method: 'POST',
@@ -169,8 +197,10 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
             .then(data => {
                 if (data.success) {
                     statusDiv.className = 'message success';
-                    statusDiv.style.background = 'green';
-                    statusDiv.innerHTML = data.message;
+                    statusDiv.style.background = 'rgba(3, 218, 198, 0.2)';
+                    statusDiv.style.color = 'var(--secondary-color)';
+                    statusDiv.style.border = '1px solid var(--secondary-color)';
+                    statusDiv.innerHTML = '<i class="bi bi-check-circle"></i> ' + data.message;
                     setTimeout(() => {
                         closeUploadModal();
                         statusDiv.style.display = 'none';
@@ -180,13 +210,14 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
                     }, 1500);
                 } else {
                     statusDiv.className = 'message error';
-                    statusDiv.style.background = 'red';
-                    statusDiv.innerHTML = data.error;
+                    statusDiv.style.background = 'rgba(207, 102, 121, 0.2)';
+                    statusDiv.style.color = 'var(--error-color)';
+                    statusDiv.style.border = '1px solid var(--error-color)';
+                    statusDiv.innerHTML = '<i class="bi bi-exclamation-triangle"></i> ' + data.error;
                 }
             })
             .catch(error => {
                 statusDiv.className = 'message error';
-                statusDiv.style.background = 'red';
                 statusDiv.innerHTML = 'An error occurred.';
                 console.error(error);
             });

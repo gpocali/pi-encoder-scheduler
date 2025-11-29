@@ -409,6 +409,35 @@ if ($event['asset_id'] > 0) {
                     console.error(err);
                 });
         }
+
+        function toggleEventTag(btn) {
+            btn.classList.toggle('active');
+            if (btn.classList.contains('active')) {
+                btn.style.background = 'var(--accent-color)';
+                btn.style.color = '#000';
+                btn.style.borderColor = 'var(--accent-color)';
+                btn.style.fontWeight = 'bold';
+            } else {
+                btn.style.background = '#333';
+                btn.style.color = '#ccc';
+                btn.style.borderColor = '#555';
+                btn.style.fontWeight = 'normal';
+            }
+            updateEventHiddenInputs();
+        }
+
+        function updateEventHiddenInputs() {
+            const container = document.getElementById('eventTagInputs');
+            container.innerHTML = '';
+            const activeBtns = document.querySelectorAll('#eventTagButtons .tag-btn.active');
+            activeBtns.forEach(btn => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'tag_ids[]';
+                input.value = btn.dataset.id;
+                container.appendChild(input);
+            });
+        }
     </script>
 </head>
 
@@ -488,14 +517,20 @@ if ($event['asset_id'] > 0) {
                     <div class="col">
                         <div class="form-group">
                             <label>Output Tags</label>
-                            <div class="tag-toggle-group">
+                            <div class="tag-button-group" id="eventTagButtons"
+                                style="display:flex; flex-wrap:wrap; gap:8px;">
                                 <?php foreach ($tags as $tag): ?>
-                                    <label
-                                        class="tag-toggle <?php echo in_array($tag['id'], $current_tag_ids) ? 'active' : ''; ?>"
-                                        onclick="this.classList.toggle('active')">
+                                    <button type="button"
+                                        class="tag-btn <?php echo in_array($tag['id'], $current_tag_ids) ? 'active' : ''; ?>"
+                                        data-id="<?php echo $tag['id']; ?>" onclick="toggleEventTag(this)"
+                                        style="padding:6px 12px; background:<?php echo in_array($tag['id'], $current_tag_ids) ? 'var(--accent-color)' : '#333'; ?>; border:1px solid <?php echo in_array($tag['id'], $current_tag_ids) ? 'var(--accent-color)' : '#555'; ?>; color:<?php echo in_array($tag['id'], $current_tag_ids) ? '#000' : '#ccc'; ?>; border-radius:20px; cursor:pointer; font-size:0.9em; font-weight:<?php echo in_array($tag['id'], $current_tag_ids) ? 'bold' : 'normal'; ?>;">
                                         <?php echo htmlspecialchars($tag['tag_name']); ?>
-                                        <input type="checkbox" name="tag_ids[]" value="<?php echo $tag['id']; ?>" <?php echo in_array($tag['id'], $current_tag_ids) ? 'checked' : ''; ?>>
-                                    </label>
+                                    </button>
+                                <?php endforeach; ?>
+                            </div>
+                            <div id="eventTagInputs">
+                                <?php foreach ($current_tag_ids as $tid): ?>
+                                    <input type="hidden" name="tag_ids[]" value="<?php echo $tid; ?>">
                                 <?php endforeach; ?>
                             </div>
                         </div>
