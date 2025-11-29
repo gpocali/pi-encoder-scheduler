@@ -170,7 +170,7 @@ if ($view == 'list') {
             JOIN event_tags et ON e.id = et.event_id
             JOIN assets a ON e.asset_id = a.id 
             WHERE " . implode(" AND ", $where_clauses) . " 
-            ORDER BY e.start_time DESC 
+            ORDER BY e.start_time ASC 
             LIMIT $per_page OFFSET $offset";
 
     $stmt = $pdo->prepare($sql);

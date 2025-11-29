@@ -183,6 +183,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
 
         if (empty($errors)) {
              // Refresh event data (outside transaction)
+            $stmt = $pdo->prepare("SELECT * FROM events WHERE id = ?");
             $stmt->execute([$event_id]);
             $event = $stmt->fetch(PDO::FETCH_ASSOC);
 
