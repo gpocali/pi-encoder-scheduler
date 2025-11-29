@@ -479,19 +479,7 @@ if ($event['asset_id'] > 0) {
                         required>
                 </div>
 
-                <?php if ($is_series): ?>
-                    <div class="form-group"
-                        style="background:#2a2a2a; padding:10px; border:1px solid #444; border-radius:4px;">
-                        <label style="font-weight:bold;">Recurring Event Options</label>
-                        <div style="margin-top:5px;">
-                            <label style="margin-right:15px;"><input type="radio" name="update_scope" value="only_this"
-                                    checked> Only This Instance</label>
-                            <label style="margin-right:15px;"><input type="radio" name="update_scope" value="future"> This &
-                                Future</label>
-                            <label><input type="radio" name="update_scope" value="all"> Entire Series</label>
-                        </div>
-                    </div>
-                <?php endif; ?>
+
 
                 <div class="form-group">
                     <label>Start Date</label>
@@ -567,7 +555,17 @@ if ($event['asset_id'] > 0) {
                     <div id="asset-warning" style="color:orange; display:none; margin-top:5px;"></div>
                 </div>
 
-                <button type="submit" class="btn">Update Event</button>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <?php if ($is_series): ?>
+                        <select name="update_scope"
+                            style="padding: 10px; background: #333; color: #fff; border: 1px solid #444; border-radius: 4px;">
+                            <option value="only_this">Only This Instance</option>
+                            <option value="future">This & Future</option>
+                            <option value="all">Entire Series</option>
+                        </select>
+                    <?php endif; ?>
+                    <button type="submit" class="btn" style="flex:1;">Update Event</button>
+                </div>
             </form>
 
             <div style="display:flex; gap:10px; margin-top:1em;">
