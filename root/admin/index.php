@@ -350,7 +350,7 @@ if ($view == 'list') {
                 </label>
             </form>
 
-            <a href="create_event.php" class="btn btn-secondary">+ New Event</a>
+            <a href="create_event.php?<?php echo http_build_query($_GET); ?>" class="btn btn-secondary">+ New Event</a>
         </div>
 
         <!-- View Tabs -->
@@ -414,8 +414,8 @@ if ($view == 'list') {
                             </td>
                             <td><?php echo htmlspecialchars($ev['filename_original']); ?></td>
                             <td>
-                                <a href="edit_event.php?id=<?php echo $ev['id']; ?>"
-                                    style="color:var(--secondary-color); margin-right:10px;">Edit</a>
+                                <a href="edit_event.php?id=<?php echo $ev['id']; ?>&<?php echo http_build_query($_GET); ?>"
+                                    class="btn btn-sm btn-secondary">Edit</a>
                                 <?php if ($status != 'Live'): ?>
                                     <form method="POST" style="display:inline;" onsubmit="return confirm('Delete?');">
                                         <input type="hidden" name="action" value="delete_event">

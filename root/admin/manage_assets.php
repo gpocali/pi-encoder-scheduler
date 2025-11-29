@@ -11,224 +11,6 @@ $is_tag_editor = has_role('tag_editor');
 $allowed_tag_ids = [];
 if ($is_admin || $is_full_user) {
     $stmt = $pdo->query("SELECT id FROM tags");
-    $allowed_tag_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
-} else {
-    $stmt = $pdo->prepare("SELECT tag_id FROM user_tags WHERE user_id = ?");
-    $stmt->execute([$user_id]);
-    $allowed_tag_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
-}
-if (empty($allowed_tag_ids) && $is_tag_editor)
-    $allowed_tag_ids = [0];
-
-$errors = [];
-$success_message = '';
-
-// Handle Scan & Index (Admin Only)
-if ($is_admin && isset($_POST['action']) && $_POST['action'] == 'scan_index') {
-    $upload_dir = '/uploads/';
-    if (!is_dir($upload_dir)) {
-        mkdir($upload_dir, 0755, true);
-    }
-
-    if (is_dir($upload_dir)) {
-        $files = scandir($upload_dir);
-        $count_added = 0;
-        foreach ($files as $file) {
-            if ($file === '.' || $file === '..')
-                continue;
-            $filepath = $upload_dir . $file;
-            if (is_file($filepath)) {
-                $md5 = md5_file($filepath);
-                // Check if exists
-                $stmt_check = $pdo->prepare("SELECT id FROM assets WHERE md5_hash = ?");
-                $stmt_check->execute([$md5]);
-                if (!$stmt_check->fetch()) {
-                    // Insert
-                    $mime_type = mime_content_type($filepath);
-                    $size = filesize($filepath);
-                    // Try to guess original filename from disk name if it has prefix
-                    // Format: asset_UNIQUEID_ORIGINAL
-                    $parts = explode('_', $file, 3);
-                    $original_name = count($parts) >= 3 ? $parts[2] : $file;
-
-                    $stmt_ins = $pdo->prepare("INSERT INTO assets (filename_disk, filename_original, mime_type, md5_hash, uploaded_by, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
-                    $stmt_ins->execute([$file, $original_name, $mime_type, $md5, $user_id, $size]);
-                    $count_added++;
-                }
-            }
-        }
-        $success_message = "Scan complete. Indexed $count_added new assets.";
-    } else {
-        $errors[] = "Could not create or access upload directory.";
-    }
-}
-
-// Handle Upload
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'upload_asset') {
-    $selected_tag_ids = $_POST['tag_ids'] ?? [];
-
-    $valid_tags = true;
-    foreach ($selected_tag_ids as $tid) {
-        if (!in_array($tid, $allowed_tag_ids)) {
-            $valid_tags = false;
-            break;
-        }
-    }
-
-    if (!$valid_tags) {
-        $errors[] = "You do not have permission to upload assets for one or more selected tags.";
-    } elseif (!isset($_FILES['asset']) || $_FILES['asset']['error'] != UPLOAD_ERR_OK) {
-        $errors[] = "File upload failed.";
-    } else {
-        $asset = $_FILES['asset'];
-        $tmp_name = $asset['tmp_name'];
-        $md5 = md5_file($tmp_name);
-        $size_bytes = $asset['size'];
-
-        $stmt_check = $pdo->prepare("SELECT id FROM assets WHERE md5_hash = ?");
-        $stmt_check->execute([$md5]);
-        if ($stmt_check->fetch()) {
-            $errors[] = "This file has already been uploaded.";
-        } else {
-            // Check Storage Quota (MB)
-            foreach ($selected_tag_ids as $tid) {
-                $stmt_limit = $pdo->prepare("SELECT storage_limit_mb FROM tags WHERE id = ?");
-                $stmt_limit->execute([$tid]);
-                $limit_mb = $stmt_limit->fetchColumn();
-
-                // Calculate current usage
-                $stmt_usage = $pdo->prepare("SELECT SUM(size_bytes) FROM assets a JOIN asset_tags at ON a.id = at.asset_id WHERE at.tag_id = ?");
-                $stmt_usage->execute([$tid]);
-                $current_bytes = $stmt_usage->fetchColumn();
-                $current_mb = $current_bytes / (1024 * 1024);
-
-                $new_file_mb = $size_bytes / (1024 * 1024);
-
-                if ($limit_mb > 0 && ($current_mb + $new_file_mb) > $limit_mb) {
-                    $errors[] = "Storage limit reached for tag ID $tid (Limit: {$limit_mb} MB). Current usage: " . round($current_mb, 2) . " MB.";
-                    break;
-                }
-            }
-
-            if (empty($errors)) {
-                $original_filename = basename($asset['name']);
-                $mime_type = $asset['type'];
-                $safe_filename = uniqid('asset_', true) . '_' . preg_replace("/[^a-zA-Z0-9\._-]/", "", $original_filename);
-                $upload_dir = '/uploads/';
-                if (!is_dir($upload_dir))
-                    mkdir($upload_dir, 0755, true);
-
-                $upload_path = $upload_dir . $safe_filename;
-
-                if (move_uploaded_file($tmp_name, $upload_path)) {
-                    $stmt_ins = $pdo->prepare("INSERT INTO assets (filename_disk, filename_original, mime_type, md5_hash, uploaded_by, size_bytes) VALUES (?, ?, ?, ?, ?, ?)");
-                    $stmt_ins->execute([$safe_filename, $original_filename, $mime_type, $md5, $user_id, $size_bytes]);
-                    $asset_id = $pdo->lastInsertId();
-
-                    // Link tags
-                    $stmt_at = $pdo->prepare("INSERT INTO asset_tags (asset_id, tag_id) VALUES (?, ?)");
-                    foreach ($selected_tag_ids as $tid) {
-                        $stmt_at->execute([$asset_id, $tid]);
-                    }
-
-                    $success_message = "Asset uploaded successfully.";
-                } else {
-                    $errors[] = "Failed to move uploaded file.";
-                }
-            }
-        }
-    }
-}
-
-// Handle Delete
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'delete_asset') {
-    $asset_id = (int) $_POST['asset_id'];
-    $stmt_get = $pdo->prepare("SELECT * FROM assets WHERE id = ?");
-    $stmt_get->execute([$asset_id]);
-    $asset_to_del = $stmt_get->fetch(PDO::FETCH_ASSOC);
-
-    // Allow delete if user has permission for ANY of the asset's tags OR if asset has NO tags and user is admin
-    $can_delete = false;
-    if ($asset_to_del) {
-        $stmt_tags = $pdo->prepare("SELECT tag_id FROM asset_tags WHERE asset_id = ?");
-        $stmt_tags->execute([$asset_id]);
-        $asset_tags = $stmt_tags->fetchAll(PDO::FETCH_COLUMN);
-
-        if (empty($asset_tags)) {
-            if ($is_admin)
-                $can_delete = true;
-        } else {
-            foreach ($asset_tags as $tid) {
-                if (in_array($tid, $allowed_tag_ids)) {
-                    $can_delete = true;
-                    break;
-                }
-            }
-        }
-    }
-
-    if ($can_delete) {
-        $blocking_reasons = [];
-
-        // Check Default Assets
-        $stmt_def = $pdo->prepare("SELECT t.tag_name FROM default_assets da JOIN tags t ON da.tag_id = t.id WHERE da.asset_id = ?");
-        $stmt_def->execute([$asset_id]);
-        $def_tags = $stmt_def->fetchAll(PDO::FETCH_COLUMN);
-
-        if (!empty($def_tags)) {
-            foreach ($def_tags as $tag_name) {
-                $blocking_reasons[] = "Set as default asset for tag: " . htmlspecialchars($tag_name);
-            }
-        }
-
-        // Check Future/Current Events (Compare against UTC)
-        $now_utc = gmdate('Y-m-d H:i:s');
-        $stmt_usage = $pdo->prepare("SELECT event_name, start_time FROM events WHERE asset_id = ? AND end_time > ?");
-        $stmt_usage->execute([$asset_id, $now_utc]);
-        $active_events = $stmt_usage->fetchAll(PDO::FETCH_ASSOC);
-
-        if (!empty($active_events)) {
-            foreach ($active_events as $ev) {
-                // Convert UTC start time to local for display
-                $start_local = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))
-                    ->setTimezone(new DateTimeZone('America/New_York'))
-                    ->format('M j, Y H:i');
-                $blocking_reasons[] = "Used in event: " . htmlspecialchars($ev['event_name']) . " (" . $start_local . ")";
-            }
-        }
-
-        if (!empty($blocking_reasons)) {
-            $errors[] = "Cannot delete asset. It is currently in use by the following:<br><ul><li>" . implode("</li><li>", $blocking_reasons) . "</li></ul>";
-        } else {
-            // Set asset_id to NULL for past events to satisfy FK constraint
-            $pdo->prepare("UPDATE events SET asset_id = NULL WHERE asset_id = ?")->execute([$asset_id]);
-
-            $file_path = '/uploads/' . $asset_to_del['filename_disk'];
-            if (file_exists($file_path))
-                unlink($file_path);
-
-            // Delete from DB
-            $pdo->prepare("DELETE FROM assets WHERE id = ?")->execute([$asset_id]);
-            $success_message = "Asset deleted successfully.";
-        }
-    } else {
-        $errors[] = "You do not have permission to delete this asset.";
-    }
-}
-
-// Fetch Assets
-$filter_tag_id = isset($_GET['filter_tag']) ? $_GET['filter_tag'] : null;
-$sql_assets = "SELECT a.*, u.username, 
-               (SELECT GROUP_CONCAT(t.tag_name SEPARATOR ', ') FROM default_assets da JOIN tags t ON da.tag_id = t.id WHERE da.asset_id = a.id) as default_for_tags
-               FROM assets a 
-               LEFT JOIN users u ON a.uploaded_by = u.id 
-               LEFT JOIN asset_tags at ON a.id = at.asset_id
-               WHERE 1=1";
-$params = [];
-
-// Filter by allowed tags
-if (!$is_admin && !empty($allowed_tag_ids)) {
-    $in_clause = implode(',', array_fill(0, count($allowed_tag_ids), '?'));
     $sql_assets .= " AND (a.uploaded_by = ? OR at.tag_id IN ($in_clause))";
     $params[] = $user_id;
     $params = array_merge($params, $allowed_tag_ids);
@@ -294,7 +76,8 @@ function formatBytes($bytes, $precision = 2)
         <div class="stats" style="display: flex; gap: 20px; margin-bottom: 2em;">
             <div class="card" style="flex: 1; text-align: center; margin-bottom:0;">
                 <div style="font-size: 2em; font-weight: bold; color: var(--secondary-color);">
-                    <?php echo count($assets); ?></div>
+                    <?php echo count($assets); ?>
+                </div>
                 <div>Total Assets</div>
             </div>
             <div class="card" style="flex: 1; text-align: center; margin-bottom:0;">
@@ -315,46 +98,88 @@ function formatBytes($bytes, $precision = 2)
                     }
                     ?>
                 </div>
-                <div>Total Space Used <?php echo $filter_tag_id && $limit_mb > 0 ? "(of Limit)" : ""; ?></div>
+                <div>Total Storage Used</div>
+            </div>
+            <div class="card"
+                style="flex: 1; display:flex; align-items:center; justify-content:center; margin-bottom:0;">
+                <form method="GET" style="width:100%;">
+                    <select name="filter_tag" onchange="this.form.submit()" style="width:100%; padding:10px;">
+                        <option value="">All Tags</option>
+                        <?php foreach ($available_tags as $tag): ?>
+                            <option value="<?php echo $tag['id']; ?>" <?php if ($filter_tag_id == $tag['id'])
+                                   echo 'selected'; ?>>
+                                <?php echo htmlspecialchars($tag['tag_name']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </form>
             </div>
         </div>
 
         <div class="card">
             <h2>Upload New Asset</h2>
-            <form method="POST" enctype="multipart/form-data">
+            <form method="POST" enctype="multipart/form-data" id="uploadForm">
                 <input type="hidden" name="action" value="upload_asset">
+
                 <div class="form-group">
-                    <label>Select Tags to Associate (Hold Ctrl/Cmd to select multiple)</label>
-                    <select name="tag_ids[]" multiple required style="height: 100px;">
+                    <label>Select Tags (Optional)</label>
+                    <div class="tag-toggle-group">
                         <?php foreach ($available_tags as $tag): ?>
-                            <option value="<?php echo $tag['id']; ?>"><?php echo htmlspecialchars($tag['tag_name']); ?>
-                            </option>
+                            <label class="tag-toggle" onclick="this.classList.toggle('active')">
+                                <?php echo htmlspecialchars($tag['tag_name']); ?>
+                                <input type="checkbox" name="tag_ids[]" value="<?php echo $tag['id']; ?>">
+                            </label>
                         <?php endforeach; ?>
-                    </select>
+                    </div>
                 </div>
+
                 <div class="form-group">
-                    <label>File</label>
-                    <input type="file" name="asset" required>
+                    <label>Files</label>
+                    <div id="drop-zone" class="drop-zone">
+                        <p>Drag & Drop files here or click to select</p>
+                        <div id="file-list" style="margin-top:10px; font-size:0.9em; color:#fff;"></div>
+                    </div>
+                    <input type="file" name="assets[]" id="file-input" multiple style="display:none;">
                 </div>
-                <button type="submit">Upload Asset</button>
+
+                <button type="submit" class="btn">Upload Assets</button>
             </form>
         </div>
 
-        <div class="controls"
-            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1em; flex-wrap: wrap; gap: 10px;">
-            <h2 style="margin:0;">Asset Library</h2>
-            <form class="filters" method="GET" style="display:flex; gap:10px; align-items:center;">
-                <select name="filter_tag" onchange="this.form.submit()" style="padding:5px;">
-                    <option value="">All Tags</option>
-                    <?php foreach ($available_tags as $tag): ?>
-                        <option value="<?php echo $tag['id']; ?>" <?php if ($filter_tag_id == $tag['id'])
-                               echo 'selected'; ?>>
-                            <?php echo htmlspecialchars($tag['tag_name']); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </form>
-        </div>
+        <script>
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+            const fileList = document.getElementById('file-list');
+
+            dropZone.onclick = () => fileInput.click();
+
+            dropZone.ondragover = (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            };
+            dropZone.ondragleave = () => dropZone.classList.remove('dragover');
+
+            dropZone.ondrop = (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                fileInput.files = e.dataTransfer.files;
+                updateFileList();
+            };
+
+            fileInput.onchange = updateFileList;
+
+            function updateFileList() {
+                fileList.innerHTML = '';
+                if (fileInput.files.length > 0) {
+                    for (let i = 0; i < fileInput.files.length; i++) {
+                        fileList.innerHTML += '<div>' + fileInput.files[i].name + '</div>';
+                    }
+                } else {
+                    fileList.innerHTML = '';
+                }
+            }
+        </script>
+
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
             <?php foreach ($assets as $asset): ?>
                 <div class="card" style="padding: 1em; margin-bottom: 0;">

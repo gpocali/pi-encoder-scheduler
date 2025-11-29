@@ -258,6 +258,7 @@ if ($asset_id > 0) {
 
         function filterAssetModal() {
             const search = document.getElementById('assetModalSearch').value.toLowerCase();
+            const tagFilter = document.getElementById('assetModalTagFilter').value;
             const list = document.getElementById('assetModalList');
             list.innerHTML = '';
 
@@ -266,7 +267,15 @@ if ($asset_id > 0) {
 
             assets.forEach(asset => {
                 const name = (asset.display_name || asset.filename_original).toLowerCase();
-                if (name.includes(search)) {
+                const assetTags = asset.tag_ids ? asset.tag_ids.split(',') : [];
+
+                let matchesSearch = name.includes(search);
+                let matchesTag = true;
+                if (tagFilter && !assetTags.includes(tagFilter)) {
+                    matchesTag = false;
+                }
+
+                if (matchesSearch && matchesTag) {
                     const div = document.createElement('div');
                     div.className = 'asset-item';
                     div.style.border = '1px solid #444';
@@ -400,6 +409,12 @@ if ($asset_id > 0) {
     <?php include 'navbar.php'; ?>
 
     <div class="container">
+        <div style="margin-bottom: 20px;">
+            <a href="index.php?<?php echo http_build_query($_GET); ?>"
+                style="color:var(--accent-color); text-decoration:none;">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
         <h1>Create New Event</h1>
 
         <?php if (!empty($errors)): ?>
@@ -536,6 +551,13 @@ if ($asset_id > 0) {
             <div style="margin-bottom: 15px; display:flex; justify-content:space-between; gap:10px;">
                 <input type="text" id="assetModalSearch" placeholder="Search assets..." onkeyup="filterAssetModal()"
                     style="flex:1;">
+                <select id="assetModalTagFilter" onchange="filterAssetModal()"
+                    style="flex:0 0 150px; padding: 5px; background: #333; color: #fff; border: 1px solid #444; border-radius: 4px;">
+                    <option value="">All Tags</option>
+                    <?php foreach ($tags as $tag): ?>
+                        <option value="<?php echo $tag['id']; ?>"><?php echo htmlspecialchars($tag['tag_name']); ?></option>
+                    <?php endforeach; ?>
+                </select>
                 <button type="button" class="btn btn-sm" onclick="toggleAssetModalUpload()">+ Upload New</button>
             </div>
 

@@ -122,34 +122,29 @@ $all_tags = $stmt_all_tags->fetchAll(PDO::FETCH_ASSOC);
                         disabled style="opacity:0.7;">
                 </div>
                 <div class="form-group">
-                    <label>Disk Filename (Read-only)</label>
-                    <input type="text" value="<?php echo htmlspecialchars($asset['filename_disk']); ?>" readonly
-                        disabled style="opacity:0.7;">
-                </div>
-                <div class="form-group">
                     <label>Display Name</label>
                     <input type="text" name="display_name"
                         value="<?php echo htmlspecialchars($asset['display_name'] ?? $asset['filename_original']); ?>"
                         required>
                 </div>
 
-                <div class="form-group">
-                    <label>Tags</label>
-                    <div class="tag-toggle-group">
-                        <?php foreach ($all_tags as $tag): ?>
-                            <label class="tag-toggle <?php echo in_array($tag['id'], $current_tag_ids) ? 'active' : ''; ?>"
-                                onclick="this.classList.toggle('active')">
-                                <?php echo htmlspecialchars($tag['tag_name']); ?>
-                                <input type="checkbox" name="tag_ids[]" value="<?php echo $tag['id']; ?>" <?php echo in_array($tag['id'], $current_tag_ids) ? 'checked' : ''; ?>>
-                            </label>
-                        <?php endforeach; ?>
-                    </div>
+            <div class="form-group">
+                <label>Tags</label>
+                <div class="tag-toggle-group">
+                    <?php foreach ($all_tags as $tag): ?>
+                        <label class="tag-toggle <?php echo in_array($tag['id'], $current_tag_ids) ? 'active' : ''; ?>"
+                            onclick="this.classList.toggle('active')">
+                            <?php echo htmlspecialchars($tag['tag_name']); ?>
+                            <input type="checkbox" name="tag_ids[]" value="<?php echo $tag['id']; ?>" <?php echo in_array($tag['id'], $current_tag_ids) ? 'checked' : ''; ?>>
+                        </label>
+                    <?php endforeach; ?>
                 </div>
+            </div>
 
-                <div style="display:flex; gap:10px;">
-                    <button type="submit" class="btn">Save Changes</button>
-                    <a href="manage_assets.php" class="btn btn-secondary">Back to Assets</a>
-                </div>
+            <div style="display:flex; gap:10px;">
+                <button type="submit" class="btn">Save Changes</button>
+                <a href="manage_assets.php" class="btn btn-secondary">Back to Assets</a>
+            </div>
             </form>
         </div>
     </div>
