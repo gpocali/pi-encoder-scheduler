@@ -181,8 +181,8 @@ if ($view == 'list') {
     $start_month = date('Y-m-01', strtotime($filter_date));
     $end_month = date('Y-m-t', strtotime($filter_date));
 
-    $start_utc = (new DateTime($start_month))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d 00:00:00');
-    $end_utc = (new DateTime($end_month))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d 23:59:59');
+    $start_utc = (new DateTime($start_month . ' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+    $end_utc = (new DateTime($end_month . ' 23:59:59'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
     $where_clauses[] = "e.start_time BETWEEN ? AND ?";
     $params[] = $start_utc;
@@ -207,8 +207,8 @@ if ($view == 'list') {
     $dt->modify('sunday this week');
     $end_week = $dt->format('Y-m-d');
 
-    $start_utc = (new DateTime($start_week))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d 00:00:00');
-    $end_utc = (new DateTime($end_week))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d 23:59:59');
+    $start_utc = (new DateTime($start_week . ' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+    $end_utc = (new DateTime($end_week . ' 23:59:59'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
     $where_clauses[] = "e.start_time BETWEEN ? AND ?";
     $params[] = $start_utc;
@@ -225,8 +225,8 @@ if ($view == 'list') {
         $events[$date][] = $ev;
     }
 } elseif ($view == 'day') {
-    $start_utc = (new DateTime($filter_date))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d 00:00:00');
-    $end_utc = (new DateTime($filter_date))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d 23:59:59');
+    $start_utc = (new DateTime($filter_date . ' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+    $end_utc = (new DateTime($filter_date . ' 23:59:59'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
     $where_clauses[] = "e.start_time BETWEEN ? AND ?";
     $params[] = $start_utc;
@@ -342,7 +342,8 @@ if ($view == 'list') {
                     <input type="date" name="date" value="<?php echo $filter_date; ?>" onchange="this.form.submit()">
                 <?php endif; ?>
 
-                <label style="margin-left:10px; display:flex; align-items:center; gap:5px; cursor:pointer;">
+                <label
+                    style="margin-left:10px; display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap;">
                     <input type="checkbox" name="hide_past" value="1" <?php if ($hide_past)
                         echo 'checked'; ?>
                         onchange="this.form.submit()">
