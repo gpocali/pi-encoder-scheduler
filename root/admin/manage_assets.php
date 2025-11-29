@@ -25,7 +25,7 @@ if ($is_admin || $is_full_user) {
     $stmt = $pdo->prepare("SELECT tag_id FROM user_tags WHERE user_id = ?");
     $stmt->execute([$user_id]);
     $allowed_tag_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
-    
+
     if (!empty($allowed_tag_ids)) {
         $in_clause = implode(',', array_fill(0, count($allowed_tag_ids), '?'));
         $sql_assets .= " AND (a.uploaded_by = ? OR at.tag_id IN ($in_clause))";
@@ -94,15 +94,19 @@ function formatBytes($bytes, $precision = 2)
 <body>
     <?php include 'navbar.php'; ?>
     <div class="container">
-        <h1>Manage Assets</h1>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+            <h1 style="margin:0;">Manage Assets</h1>
+            <button onclick="openUploadModal()" class="btn"><i class="bi bi-cloud-upload"></i> Upload Asset</button>
+        </div>
+
         <?php if (!empty($errors)): ?>
-            <div class="message error">
-                <ul><?php foreach ($errors as $e)
-                    echo "<li>$e</li>"; ?></ul>
-            </div>
+                <div class="message error">
+                    <ul><?php foreach ($errors as $e)
+                        echo "<li>$e</li>"; ?></ul>
+                </div>
         <?php endif; ?>
         <?php if (isset($success_message) && $success_message): ?>
-            <div class="message success"><?php echo $success_message; ?></div>
+                <div class="message success"><?php echo $success_message; ?></div>
         <?php endif; ?>
 
         <div class="stats" style="display: flex; gap: 20px; margin-bottom: 2em;">
@@ -127,37 +131,40 @@ function formatBytes($bytes, $precision = 2)
                                       ORDER BY t.tag_name";
                         $stmt_usage = $pdo->query($sql_usage);
                         $usage_data = $stmt_usage->fetchAll(PDO::FETCH_ASSOC);
-                        
+
                         // Filter by available tags
                         $available_tag_ids = array_column($available_tags, 'id');
-                        
-                        foreach ($usage_data as $row): 
-                            if (!in_array($row['id'], $available_tag_ids)) continue;
+
+                        foreach ($usage_data as $row):
+                            if (!in_array($row['id'], $available_tag_ids))
+                                continue;
 
                             $limit_bytes = $row['storage_limit_mb'] * 1024 * 1024;
                             $used = $row['used_bytes'];
                             $percent = ($limit_bytes > 0) ? round(($used / $limit_bytes) * 100, 1) : 0;
-                            
+
                             // Color coding for usage
                             $color = 'var(--secondary-color)';
                             if ($limit_bytes > 0) {
-                                if ($percent >= 90) $color = 'var(--error-color)';
-                                elseif ($percent >= 70) $color = 'orange';
+                                if ($percent >= 90)
+                                    $color = 'var(--error-color)';
+                                elseif ($percent >= 70)
+                                    $color = 'orange';
                             }
-                        ?>
-                        <tr style="border-bottom: 1px solid #333;">
-                            <td style="padding: 5px;"><?php echo htmlspecialchars($row['tag_name']); ?></td>
-                            <td style="padding: 5px; text-align:right; font-weight:bold; color:<?php echo $color; ?>;">
-                                <?php if ($limit_bytes > 0): ?>
-                                    <?php echo $percent; ?>%
-                                <?php else: ?>
-                                    <span style="color:#aaa; font-weight:normal;">Unlimited</span>
-                                <?php endif; ?>
-                            </td>
-                            <td style="padding: 5px; text-align:right; color:#777; font-size:0.85em;">
-                                <?php echo formatBytes($used); ?>
-                            </td>
-                        </tr>
+                            ?>
+                            <tr style="border-bottom: 1px solid #333;">
+                                <td style="padding: 5px;"><?php echo htmlspecialchars($row['tag_name']); ?></td>
+                                <td style="padding: 5px; text-align:right; font-weight:bold; color:<?php echo $color; ?>;">
+                                    <?php if ($limit_bytes > 0): ?>
+                                            <?php echo $percent; ?>%
+                                    <?php else: ?>
+                                            <span style="color:#aaa; font-weight:normal;">Unlimited</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td style="padding: 5px; text-align:right; color:#777; font-size:0.85em;">
+                                    <?php echo formatBytes($used); ?>
+                                </td>
+                            </tr>
                         <?php endforeach; ?>
                     </table>
                 </div>
@@ -168,169 +175,76 @@ function formatBytes($bytes, $precision = 2)
                     <select name="filter_tag" onchange="this.form.submit()" style="width:100%; padding:10px;">
                         <option value="">All Tags</option>
                         <?php foreach ($available_tags as $tag): ?>
-                            <option value="<?php echo $tag['id']; ?>" <?php if ($filter_tag_id == $tag['id'])
-                                   echo 'selected'; ?>>
-                                <?php echo htmlspecialchars($tag['tag_name']); ?>
-                            </option>
+                                <option value="<?php echo $tag['id']; ?>" <?php if ($filter_tag_id == $tag['id'])
+                                       echo 'selected'; ?>>
+                                    <?php echo htmlspecialchars($tag['tag_name']); ?>
+                                </option>
                         <?php endforeach; ?>
                     </select>
                 </form>
             </div>
         </div>
 
-        <div class="card">
-            <h2>Upload New Asset</h2>
-            <form method="POST" enctype="multipart/form-data" id="uploadForm">
-                <input type="hidden" name="action" value="upload_asset">
-
-                <div class="form-group">
-                    <label>Select Tags (Optional)</label>
-                    <div class="tag-button-group" id="uploadTagButtons" style="display:flex; flex-wrap:wrap; gap:8px;">
-                        <?php foreach ($available_tags as $tag): ?>
-                            <button type="button" class="tag-btn" data-id="<?php echo $tag['id']; ?>" onclick="toggleUploadTag(this)" style="padding:6px 12px; background:#333; border:1px solid #555; color:#ccc; border-radius:20px; cursor:pointer; font-size:0.9em;">
-                                <?php echo htmlspecialchars($tag['tag_name']); ?>
-                            </button>
-                        <?php endforeach; ?>
-                    </div>
-                    <div id="uploadTagInputs"></div>
-                </div>
-
-                <div class="form-group">
-                    <label>Files</label>
-                    <div id="drop-zone" class="drop-zone">
-                        <p>Drag & Drop files here or click to select</p>
-                        <div id="file-list" style="margin-top:10px; font-size:0.9em; color:#fff;"></div>
-                    </div>
-                    <input type="file" name="assets[]" id="file-input" multiple style="display:none;">
-                </div>
-
-                <button type="submit" class="btn">Upload Assets</button>
-            </form>
-        </div>
-
-        <script>
-            const dropZone = document.getElementById('drop-zone');
-            const fileInput = document.getElementById('file-input');
-            const fileList = document.getElementById('file-list');
-
-            dropZone.onclick = () => fileInput.click();
-
-            dropZone.ondragover = (e) => {
-                e.preventDefault();
-                dropZone.classList.add('dragover');
-            };
-            dropZone.ondragleave = () => dropZone.classList.remove('dragover');
-
-            dropZone.ondrop = (e) => {
-                e.preventDefault();
-                dropZone.classList.remove('dragover');
-                fileInput.files = e.dataTransfer.files;
-                updateFileList();
-            };
-
-            fileInput.onchange = updateFileList;
-
-            function updateFileList() {
-                fileList.innerHTML = '';
-                if (fileInput.files.length > 0) {
-                    for (let i = 0; i < fileInput.files.length; i++) {
-                        fileList.innerHTML += '<div>' + fileInput.files[i].name + '</div>';
-                    }
-                } else {
-                    fileList.innerHTML = '';
-                }
-            }
-
-            function toggleUploadTag(btn) {
-                btn.classList.toggle('active');
-                if (btn.classList.contains('active')) {
-                    btn.style.background = 'var(--accent-color)';
-                    btn.style.color = '#000';
-                    btn.style.borderColor = 'var(--accent-color)';
-                    btn.style.fontWeight = 'bold';
-                } else {
-                    btn.style.background = '#333';
-                    btn.style.color = '#ccc';
-                    btn.style.borderColor = '#555';
-                    btn.style.fontWeight = 'normal';
-                }
-                updateUploadHiddenInputs();
-            }
-
-            function updateUploadHiddenInputs() {
-                const container = document.getElementById('uploadTagInputs');
-                container.innerHTML = '';
-                const activeBtns = document.querySelectorAll('#uploadTagButtons .tag-btn.active');
-                activeBtns.forEach(btn => {
-                    const input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = 'tag_ids[]';
-                    input.value = btn.dataset.id;
-                    container.appendChild(input);
-                });
-            }
-        </script>
-
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
             <?php foreach ($assets as $asset): ?>
-                <div class="card" style="padding: 1em; margin-bottom: 0;">
-                    <?php
-                    $file_url = 'serve_asset.php?id=' . $asset['id'];
-                    $is_image = strpos($asset['mime_type'], 'image') !== false;
-                    $is_video = strpos($asset['mime_type'], 'video') !== false;
-                    ?>
-                    <div onclick="showPreview('<?php echo $file_url; ?>', '<?php echo $asset['mime_type']; ?>')"
-                        style="aspect-ratio: 16/9; width: 100%; background: #000; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; overflow: hidden; border-radius: 4px; cursor: pointer;">
-                        <?php if ($is_image): ?>
-                            <img src="<?php echo $file_url; ?>" style="width: 100%; height: 100%; object-fit: cover;">
-                        <?php elseif ($is_video): ?>
-                            <video src="<?php echo $file_url; ?>" style="width: 100%; height: 100%; object-fit: cover;"></video>
-                        <?php else: ?>
-                            <span style="color: #777;">No Preview</span>
-                        <?php endif; ?>
-                    </div>
-
-                    <?php if (!empty($asset['default_for_tags'])): ?>
-                        <div style="font-size: 0.8em; color: var(--accent-color); font-weight: bold; margin-bottom: 5px;">
-                            Default: <?php echo htmlspecialchars($asset['default_for_tags']); ?>
-                        </div>
-                    <?php endif; ?>
-
-                    <div style="font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px;"
-                        title="<?php echo htmlspecialchars($asset['display_name'] ?? $asset['filename_original']); ?>">
-                        <?php echo htmlspecialchars($asset['display_name'] ?? $asset['filename_original']); ?>
-                    </div>
-
-                    <div style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">
-                        Size: <?php echo formatBytes($asset['size_bytes']); ?><br>
+                    <div class="card" style="padding: 1em; margin-bottom: 0;">
                         <?php
-                        // Fetch tags for this asset
-                        $stmt_at = $pdo->prepare("SELECT t.tag_name FROM asset_tags at JOIN tags t ON at.asset_id = ? AND at.tag_id = t.id");
-                        $stmt_at->execute([$asset['id']]);
-                        $at_names = $stmt_at->fetchAll(PDO::FETCH_COLUMN);
-                        $tag_display = empty($at_names) ? 'None' : implode(', ', $at_names);
+                        $file_url = 'serve_asset.php?id=' . $asset['id'];
+                        $is_image = strpos($asset['mime_type'], 'image') !== false;
+                        $is_video = strpos($asset['mime_type'], 'video') !== false;
                         ?>
-                        Tags: <?php echo htmlspecialchars($tag_display); ?><br>
-                        By: <?php echo htmlspecialchars($asset['username'] ?? 'System'); ?><br>
-                        Date: <?php echo date('M j, Y', strtotime($asset['created_at'])); ?>
-                    </div>
+                        <div onclick="showPreview('<?php echo $file_url; ?>', '<?php echo $asset['mime_type']; ?>')"
+                            style="aspect-ratio: 16/9; width: 100%; background: #000; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; overflow: hidden; border-radius: 4px; cursor: pointer;">
+                            <?php if ($is_image): ?>
+                                    <img src="<?php echo $file_url; ?>" style="width: 100%; height: 100%; object-fit: cover;">
+                            <?php elseif ($is_video): ?>
+                                    <video src="<?php echo $file_url; ?>" style="width: 100%; height: 100%; object-fit: cover;"></video>
+                            <?php else: ?>
+                                    <span style="color: #777;">No Preview</span>
+                            <?php endif; ?>
+                        </div>
 
-                    <div style="display:flex; gap:10px;">
-                        <a href="edit_asset.php?id=<?php echo $asset['id']; ?>" class="btn btn-sm btn-secondary"
-                            style="flex:1; text-align:center;">Edit</a>
-                        <?php if (($is_admin || $asset['uploaded_by'] == $_SESSION['user_id']) && empty($asset['default_for_tags'])): ?>
-                            <form method="POST" onsubmit="return confirm('Delete this asset? This cannot be undone.');"
-                                style="flex:1;">
-                                <input type="hidden" name="action" value="delete_asset">
-                                <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
-                                <button type="submit" class="btn-delete btn-sm" style="width: 100%;">Delete</button>
-                            </form>
-                        <?php else: ?>
-                            <button class="btn-delete btn-sm" style="flex:1; opacity:0.5; cursor:not-allowed;"
-                                disabled>Delete</button>
+                        <?php if (!empty($asset['default_for_tags'])): ?>
+                                <div style="font-size: 0.8em; color: var(--accent-color); font-weight: bold; margin-bottom: 5px;">
+                                    Default: <?php echo htmlspecialchars($asset['default_for_tags']); ?>
+                                </div>
                         <?php endif; ?>
+
+                        <div style="font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px;"
+                            title="<?php echo htmlspecialchars($asset['display_name'] ?? $asset['filename_original']); ?>">
+                            <?php echo htmlspecialchars($asset['display_name'] ?? $asset['filename_original']); ?>
+                        </div>
+
+                        <div style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">
+                            Size: <?php echo formatBytes($asset['size_bytes']); ?><br>
+                            <?php
+                            // Fetch tags for this asset
+                            $stmt_at = $pdo->prepare("SELECT t.tag_name FROM asset_tags at JOIN tags t ON at.asset_id = ? AND at.tag_id = t.id");
+                            $stmt_at->execute([$asset['id']]);
+                            $at_names = $stmt_at->fetchAll(PDO::FETCH_COLUMN);
+                            $tag_display = empty($at_names) ? 'None' : implode(', ', $at_names);
+                            ?>
+                            Tags: <?php echo htmlspecialchars($tag_display); ?><br>
+                            By: <?php echo htmlspecialchars($asset['username'] ?? 'System'); ?><br>
+                            Date: <?php echo date('M j, Y', strtotime($asset['created_at'])); ?>
+                        </div>
+
+                        <div style="display:flex; gap:10px;">
+                            <a href="edit_asset.php?id=<?php echo $asset['id']; ?>" class="btn btn-sm btn-secondary"
+                                style="flex:1; text-align:center;">Edit</a>
+                            <?php if (($is_admin || $asset['uploaded_by'] == $_SESSION['user_id']) && empty($asset['default_for_tags'])): ?>
+                                    <form method="POST" onsubmit="return confirm('Delete this asset? This cannot be undone.');"
+                                        style="flex:1;">
+                                        <input type="hidden" name="action" value="delete_asset">
+                                        <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
+                                        <button type="submit" class="btn-delete btn-sm" style="width: 100%;">Delete</button>
+                                    </form>
+                            <?php else: ?>
+                                    <button class="btn-delete btn-sm" style="flex:1; opacity:0.5; cursor:not-allowed;"
+                                        disabled>Delete</button>
+                            <?php endif; ?>
+                        </div>
                     </div>
-                </div>
             <?php endforeach; ?>
         </div>
     </div>
@@ -339,6 +253,41 @@ function formatBytes($bytes, $precision = 2)
         Gregory Pocali for WRHU with assistance from Google Gemini 3.
     </footer>
 
+    <!-- Upload Modal -->
+    <div id="uploadModal" class="modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <span class="close" onclick="closeUploadModal()">&times;</span>
+            <h2>Upload New Asset</h2>
+            <form method="POST" enctype="multipart/form-data" id="uploadForm">
+                <input type="hidden" name="action" value="upload_asset">
+
+                <div class="form-group">
+                    <label>Select Tags (Optional)</label>
+                    <div class="tag-button-group" id="uploadTagButtons" style="display:flex; flex-wrap:wrap; gap:8px;">
+                        <?php foreach ($available_tags as $tag): ?>
+                                <button type="button" class="tag-btn" data-id="<?php echo $tag['id']; ?>" onclick="toggleUploadTag(this)" style="padding:6px 12px; background:#333; border:1px solid #555; color:#ccc; border-radius:20px; cursor:pointer; font-size:0.9em;">
+                                    <?php echo htmlspecialchars($tag['tag_name']); ?>
+                                </button>
+                        <?php endforeach; ?>
+                    </div>
+                    <div id="uploadTagInputs"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Files</label>
+                    <div id="drop-zone" class="drop-zone" style="border: 2px dashed #666; padding: 40px; text-align: center; cursor: pointer; margin-bottom: 15px;">
+                        <p style="font-size: 1.2em; color: var(--accent-color); margin-bottom: 10px;"><i class="bi bi-cloud-arrow-up" style="font-size: 2em;"></i><br>Drag & Drop files here</p>
+                        <p style="color: #aaa;">or click to select</p>
+                        <div id="file-list" style="margin-top:10px; font-size:0.9em; color:#fff;"></div>
+                    </div>
+                    <input type="file" name="assets[]" id="file-input" multiple style="display:none;">
+                </div>
+
+                <button type="submit" class="btn" style="width: 100%;">Upload Assets</button>
+            </form>
+        </div>
+    </div>
+
     <!-- Large Preview Modal -->
     <div id="previewModal" class="modal" onclick="this.style.display='none'">
         <div class="modal-content preview-modal-content">
@@ -346,7 +295,97 @@ function formatBytes($bytes, $precision = 2)
             <div id="previewContainer"></div>
         </div>
     </div>
+
     <script>
+        // Upload Modal Logic
+        const modal = document.getElementById('uploadModal');
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileList = document.getElementById('file-list');
+
+        function openUploadModal() {
+            modal.style.display = "block";
+        }
+
+        function closeUploadModal() {
+            modal.style.display = "none";
+        }
+
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                closeUploadModal();
+            }
+            if (event.target == document.getElementById('previewModal')) {
+                 document.getElementById('previewModal').style.display = 'none';
+            }
+        }
+
+        dropZone.onclick = () => fileInput.click();
+
+        dropZone.ondragover = (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+            dropZone.style.borderColor = 'var(--accent-color)';
+            dropZone.style.background = 'rgba(187, 134, 252, 0.1)';
+        };
+        dropZone.ondragleave = () => {
+            dropZone.classList.remove('dragover');
+            dropZone.style.borderColor = '#666';
+            dropZone.style.background = 'transparent';
+        };
+
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            dropZone.style.borderColor = '#666';
+            dropZone.style.background = 'transparent';
+            fileInput.files = e.dataTransfer.files;
+            updateFileList();
+        };
+
+        fileInput.onchange = updateFileList;
+
+        function updateFileList() {
+            fileList.innerHTML = '';
+            if (fileInput.files.length > 0) {
+                for (let i = 0; i < fileInput.files.length; i++) {
+                    fileList.innerHTML += '<div>' + fileInput.files[i].name + '</div>';
+                }
+            } else {
+                fileList.innerHTML = '';
+            }
+        }
+
+        function toggleUploadTag(btn) {
+            btn.classList.toggle('active');
+            if (btn.classList.contains('active')) {
+                btn.style.background = 'var(--accent-color)';
+                btn.style.color = '#000';
+                btn.style.borderColor = 'var(--accent-color)';
+                btn.style.fontWeight = 'bold';
+            } else {
+                btn.style.background = '#333';
+                btn.style.color = '#ccc';
+                btn.style.borderColor = '#555';
+                btn.style.fontWeight = 'normal';
+            }
+            updateUploadHiddenInputs();
+        }
+
+        function updateUploadHiddenInputs() {
+            const container = document.getElementById('uploadTagInputs');
+            container.innerHTML = '';
+            const activeBtns = document.querySelectorAll('#uploadTagButtons .tag-btn.active');
+            activeBtns.forEach(btn => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'tag_ids[]';
+                input.value = btn.dataset.id;
+                container.appendChild(input);
+            });
+        }
+
+        // Preview Logic
         function showPreview(url, type) {
             const container = document.getElementById('previewContainer');
             container.innerHTML = '';
