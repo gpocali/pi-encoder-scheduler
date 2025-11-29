@@ -33,7 +33,7 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
                 </li>
                 <?php if ($user_role === 'admin'): ?>
                     <li>
-                        <a href="users.php" class="<?php echo $current_page == 'users.php' ? 'active' : ''; ?>" style="color:#fff; text-decoration:none;">
+                        <a href="manage_users.php" class="<?php echo $current_page == 'manage_users.php' ? 'active' : ''; ?>" style="color:#fff; text-decoration:none;">
                             <i class="bi bi-people"></i> Users
                         </a>
                     </li>
@@ -41,15 +41,20 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
             </ul>
         </div>
         <div class="navbar-user" style="display:flex; align-items:center; gap:15px;">
-            <span style="color:#aaa;"><i class="bi bi-person-circle"></i> <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?></span>
-            
             <button id="global-upload-btn" class="btn btn-sm" style="background:var(--accent-color); border:none; color:#000; cursor:pointer; padding:5px 10px; border-radius:4px; font-weight:bold;">
                 <i class="bi bi-cloud-upload"></i> Upload Asset
             </button>
             
-            <a href="logout.php" style="color:#aaa; text-decoration:none; font-size:0.9em; display:flex; align-items:center; gap:5px;">
-                <i class="bi bi-box-arrow-right"></i> Logout
-            </a>
+            <div class="dropdown">
+                <a href="#" style="color:#aaa; text-decoration:none; display:flex; align-items:center; gap:5px;">
+                    <i class="bi bi-person-circle"></i> <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?> <i class="bi bi-caret-down-fill" style="font-size:0.8em;"></i>
+                </a>
+                <div class="dropdown-content">
+                    <a href="profile.php"><i class="bi bi-gear"></i> Profile Settings</a>
+                    <div class="dropdown-divider"></div>
+                    <a href="logout.php"><i class="bi bi-box-arrow-right"></i> Logout</a>
+                </div>
+            </div>
         </div>
     </div>
 </nav>
