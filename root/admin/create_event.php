@@ -105,9 +105,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $start_utc = $start_dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
             $end_utc = $end_dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-            $sql_event = "INSERT INTO events (event_name, start_time, end_time, asset_id, priority) VALUES (?, ?, ?, ?, ?)";
+            $sql_event = "INSERT INTO events (event_name, start_time, end_time, asset_id, priority, tag_id) VALUES (?, ?, ?, ?, ?, ?)";
             $stmt_event = $pdo->prepare($sql_event);
-            $stmt_event->execute([$event_name, $start_utc, $end_utc, $asset_id, $priority]);
+            $stmt_event->execute([$event_name, $start_utc, $end_utc, $asset_id, $priority, $selected_tag_ids[0]]);
             $parent_id = $pdo->lastInsertId();
 
             // Insert Tags
@@ -139,8 +139,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             $s_utc = $next_start->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
                             $e_utc = $next_end->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-                            $stmt_recur = $pdo->prepare("INSERT INTO events (event_name, start_time, end_time, asset_id, priority, parent_event_id) VALUES (?, ?, ?, ?, ?, ?)");
-                            $stmt_recur->execute([$event_name, $s_utc, $e_utc, $asset_id, $priority, $parent_id]);
+                            $stmt_recur = $pdo->prepare("INSERT INTO events (event_name, start_time, end_time, asset_id, priority, parent_event_id, tag_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                            $stmt_recur->execute([$event_name, $s_utc, $e_utc, $asset_id, $priority, $parent_id, $selected_tag_ids[0]]);
                             $child_id = $pdo->lastInsertId();
 
                             // Tags for child
