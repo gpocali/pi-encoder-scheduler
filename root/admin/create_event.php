@@ -32,10 +32,22 @@ $recur_forever = false;
 $recur_until = '';
 
 // Handle Duplicate Request
+$event_id = 0;
 if (isset($_GET['duplicate_id'])) {
-    $dup_id = (int) $_GET['duplicate_id'];
+    $event_id = (int) $_GET['duplicate_id'];
+}
+
+// Capture Dashboard State
+$dashboard_state = [
+    'view' => $_GET['view'] ?? 'list',
+    'date' => $_GET['date'] ?? date('Y-m-d'),
+    'page' => $_GET['page'] ?? 1,
+    'tag_id' => $_GET['tag_id'] ?? '',
+    'hide_past' => $_GET['hide_past'] ?? ''
+];
+if (isset($_GET['duplicate_id'])) {
     $stmt_dup = $pdo->prepare("SELECT * FROM events WHERE id = ?");
-    $stmt_dup->execute([$dup_id]);
+    $stmt_dup->execute([$event_id]);
     $dup_event = $stmt_dup->fetch(PDO::FETCH_ASSOC);
 
     if ($dup_event) {
@@ -234,7 +246,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
 
             $pdo->commit();
-            header("Location: index.php");
+
+            // Restore Dashboard State
+            $redirect_params = [
+                'view' => $_POST['dashboard_view'] ?? 'list',
+                'date' => $_POST['dashboard_date'] ?? date('Y-m-d'),
+                'page' => $_POST['dashboard_page'] ?? 1,
+                'tag_id' => $_POST['dashboard_tag_id'] ?? '',
+                'hide_past' => $_POST['dashboard_hide_past'] ?? ''
+            ];
+            // Filter out empty
+            $redirect_params = array_filter($redirect_params, fn($v) => $v !== '');
+
+            header("Location: index.php?" . http_build_query($redirect_params));
             exit;
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -507,6 +531,17 @@ if ($asset_id > 0) {
 
         <div class="card">
             <form action="create_event.php" method="POST">
+                <!-- Preserve Dashboard State -->
+                <input type="hidden" name="dashboard_view"
+                    value="<?php echo htmlspecialchars($dashboard_state['view']); ?>">
+                <input type="hidden" name="dashboard_date"
+                    value="<?php echo htmlspecialchars($dashboard_state['date']); ?>">
+                <input type="hidden" name="dashboard_page"
+                    value="<?php echo htmlspecialchars($dashboard_state['page']); ?>">
+                <input type="hidden" name="dashboard_tag_id"
+                    value="<?php echo htmlspecialchars($dashboard_state['tag_id']); ?>">
+                <input type="hidden" name="dashboard_hide_past"
+                    value="<?php echo htmlspecialchars($dashboard_state['hide_past']); ?>">
 
                 <div class="form-group">
                     <label>Event Name</label>

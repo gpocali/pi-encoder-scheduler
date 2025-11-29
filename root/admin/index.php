@@ -408,9 +408,19 @@ if ($view == 'list') {
                                 echo htmlspecialchars(implode(', ', $tag_names));
                                 ?>
                             </td>
-                            <td><?php echo $start->setTimezone(new DateTimeZone('America/New_York'))->format('M j, g:i A'); ?>
+                            <td>
+                                <?php
+                                $start_local = $start->setTimezone(new DateTimeZone('America/New_York'));
+                                $format = ($start_local->format('Y') != date('Y')) ? 'M j, Y, g:i A' : 'M j, g:i A';
+                                echo $start_local->format($format);
+                                ?>
                             </td>
-                            <td><?php echo $end->setTimezone(new DateTimeZone('America/New_York'))->format('M j, g:i A'); ?>
+                            <td>
+                                <?php
+                                $end_local = $end->setTimezone(new DateTimeZone('America/New_York'));
+                                $format = ($end_local->format('Y') != date('Y')) ? 'M j, Y, g:i A' : 'M j, g:i A';
+                                echo $end_local->format($format);
+                                ?>
                             </td>
                             <td><?php echo htmlspecialchars($ev['filename_original']); ?></td>
                             <td>
