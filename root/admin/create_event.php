@@ -28,7 +28,9 @@ $priority = 0;
 $asset_id = 0;
 $recurrence = 'none';
 $recur_days = [];
-$recur_forever = false;
+$recur_days = [];
+$recur_forever = true;
+$recur_until = '';
 $recur_until = '';
 
 // Handle Duplicate Request
@@ -121,6 +123,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Recurrence
     $recurrence = $_POST['recurrence'] ?? 'none';
     $recur_until = $_POST['recur_until'] ?? '';
+    $recur_until = $_POST['recur_until'] ?? '';
+    // If POST, trust the checkbox. If not set in POST, it means unchecked.
+    // BUT, we need to distinguish between initial load (where we want default true) and form submission (where unchecked means false).
+    // Actually, checking isset($_POST['recur_forever']) is correct for form submission.
+    // If it's a POST, we use the posted value.
     $recur_forever = isset($_POST['recur_forever']);
     $recur_days = $_POST['recur_days'] ?? []; // Array of days (0=Sun, 6=Sat)
 
