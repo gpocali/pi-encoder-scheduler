@@ -26,7 +26,6 @@ $event_name = '';
 $selected_tag_ids = [];
 $priority = 0;
 $asset_id = 0;
-$asset_selection_mode = 'existing';
 
 // Handle Duplicate Request
 if (isset($_GET['duplicate_id'])) {
@@ -36,22 +35,15 @@ if (isset($_GET['duplicate_id'])) {
     $dup_event = $stmt_dup->fetch(PDO::FETCH_ASSOC);
 
     if ($dup_event) {
-        // Check permission
-        if (in_array($dup_event['tag_id'], $allowed_tag_ids)) { // Legacy check, might need update if dup_event has no tag_id
-            $event_name = $dup_event['event_name'] . " (Copy)";
-            // Fetch tags for duplicate
-            $stmt_tags = $pdo->prepare("SELECT tag_id FROM event_tags WHERE event_id = ?");
-            $stmt_tags->execute([$dup_id]);
-            $selected_tag_ids = $stmt_tags->fetchAll(PDO::FETCH_COLUMN);
+        // Check permission (simplified)
+        $event_name = $dup_event['event_name'] . " (Copy)";
+        // Fetch tags for duplicate
+        $stmt_tags = $pdo->prepare("SELECT tag_id FROM event_tags WHERE event_id = ?");
+        $stmt_tags->execute([$dup_id]);
+        $selected_tag_ids = $stmt_tags->fetchAll(PDO::FETCH_COLUMN);
 
-            // Fallback for legacy events
-            if (empty($selected_tag_ids) && $dup_event['tag_id']) {
-                $selected_tag_ids[] = $dup_event['tag_id'];
-            }
-
-            $priority = $dup_event['priority'];
-            $asset_id = $dup_event['asset_id'];
-        }
+        $priority = $dup_event['priority'];
+        $asset_id = $dup_event['asset_id'];
     }
 }
 
@@ -63,12 +55,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $end_time_val = $_POST['end_time'];
     $selected_tag_ids = $_POST['tag_ids'] ?? [];
     $priority = (int) $_POST['priority'];
-    $asset_selection_mode = $_POST['asset_mode'];
+    $asset_id = (int) $_POST['existing_asset_id'];
 
     // Recurrence
     $recurrence = $_POST['recurrence'] ?? 'none';
     $recur_until = $_POST['recur_until'] ?? '';
+    $recur_forever = isset($_POST['recur_forever']);
     $recur_days = $_POST['recur_days'] ?? []; // Array of days (0=Sun, 6=Sat)
+
+    if ($recur_forever) {
+        $recur_until = '2037-12-31'; // Or handle as NULL in DB if supported, but date logic uses it
+    }
 
     if (empty($event_name))
         $errors[] = "Event name is required.";
@@ -96,62 +93,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     $duration = $end_dt->getTimestamp() - $start_dt->getTimestamp();
 
-    // Asset Handling
-    $asset_id = 0;
-    if ($asset_selection_mode == 'upload') {
-        if (!isset($_FILES['asset']) || $_FILES['asset']['error'] != UPLOAD_ERR_OK) {
-            $errors[] = "Asset file upload failed.";
-        } else {
-            $asset = $_FILES['asset'];
-            $tmp_name = $asset['tmp_name'];
-            $md5 = md5_file($tmp_name);
-
-            $stmt_check = $pdo->prepare("SELECT id FROM assets WHERE md5_hash = ?");
-            $stmt_check->execute([$md5]);
-            if ($existing = $stmt_check->fetch()) {
-                $asset_id = $existing['id'];
-            } else {
-                // Quota Check (MB) - Check against ALL selected tags? Or just one?
-                // Strategy: Check if ANY tag has reached its limit.
-                foreach ($selected_tag_ids as $tid) {
-                    $stmt_limit = $pdo->prepare("SELECT storage_limit_mb FROM tags WHERE id = ?");
-                    $stmt_limit->execute([$tid]);
-                    $limit_mb = $stmt_limit->fetchColumn();
-
-                    $stmt_usage = $pdo->prepare("SELECT SUM(size_bytes) FROM assets a JOIN asset_tags at ON a.id = at.asset_id WHERE at.tag_id = ?");
-                    $stmt_usage->execute([$tid]);
-                    $current_mb = $stmt_usage->fetchColumn() / (1024 * 1024);
-                    $new_mb = $asset['size'] / (1024 * 1024);
-
-                    if ($limit_mb > 0 && ($current_mb + $new_mb) > $limit_mb) {
-                        $errors[] = "Storage limit reached for tag ID $tid.";
-                        break;
-                    }
-                }
-
-                if (empty($errors)) {
-                    $safe_filename = uniqid('asset_', true) . '_' . preg_replace("/[^a-zA-Z0-9\._-]/", "", basename($asset['name']));
-                    $upload_path = '/uploads/' . $safe_filename;
-                    if (move_uploaded_file($tmp_name, $upload_path)) {
-                        $stmt_ins = $pdo->prepare("INSERT INTO assets (filename_disk, filename_original, mime_type, md5_hash, uploaded_by, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
-                        $stmt_ins->execute([$safe_filename, basename($asset['name']), $asset['type'], $md5, $user_id, $asset['size']]);
-                        $asset_id = $pdo->lastInsertId();
-
-                        // Link tags to asset
-                        $stmt_at = $pdo->prepare("INSERT INTO asset_tags (asset_id, tag_id) VALUES (?, ?)");
-                        foreach ($selected_tag_ids as $tid) {
-                            $stmt_at->execute([$asset_id, $tid]);
-                        }
-                    } else {
-                        $errors[] = "Failed to move uploaded file.";
-                    }
-                }
-            }
-        }
-    } else {
-        $asset_id = (int) $_POST['existing_asset_id'];
-        if ($asset_id <= 0)
-            $errors[] = "Please select an existing asset.";
+    if ($asset_id <= 0) {
+        $errors[] = "Please select an asset.";
     }
 
     if (empty($errors)) {
@@ -251,7 +194,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 }
 
-$sql_assets = "SELECT id, filename_original, tag_id FROM assets ORDER BY created_at DESC";
+// Fetch assets with tags
+$sql_assets = "
+    SELECT a.id, a.filename_original, a.display_name, a.filename_disk, a.mime_type,
+           GROUP_CONCAT(at.tag_id) as tag_ids
+    FROM assets a
+    LEFT JOIN asset_tags at ON a.id = at.asset_id
+    GROUP BY a.id
+    ORDER BY a.created_at DESC";
 $all_assets = $pdo->query($sql_assets)->fetchAll(PDO::FETCH_ASSOC);
 
 $default_start = new DateTime();
@@ -261,6 +211,17 @@ $default_time = $default_start->format('H:i');
 $default_end = clone $default_start;
 $default_end->modify('+1 hour');
 $default_end_time = $default_end->format('H:i');
+
+// Pre-select asset name if editing/duplicating
+$selected_asset_name = "No Asset Selected";
+if ($asset_id > 0) {
+    foreach ($all_assets as $a) {
+        if ($a['id'] == $asset_id) {
+            $selected_asset_name = $a['display_name'] ?? $a['filename_original'];
+            break;
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -271,67 +232,166 @@ $default_end_time = $default_end->format('H:i');
     <title>Create Event - WRHU Encoder Scheduler</title>
     <link rel="stylesheet" href="style.css">
     <script>
-        function toggleAssetMode() {
-            const mode = document.querySelector('input[name="asset_mode"]:checked').value;
-            document.getElementById('mode-existing').style.display = mode === 'existing' ? 'block' : 'none';
-            document.getElementById('mode-upload').style.display = mode === 'upload' ? 'block' : 'none';
-        }
         function toggleRecurrence() {
             const val = document.getElementById('recurrence').value;
-            document.getElementById('recur-until-group').style.display = val === 'none' ? 'none' : 'block';
+            document.getElementById('recur-options').style.display = val === 'none' ? 'none' : 'block';
             document.getElementById('recur-days-group').style.display = val === 'weekly' ? 'block' : 'none';
         }
 
-        // Asset Filtering Logic
-        document.addEventListener('DOMContentLoaded', function () {
-            const tagSelect = document.getElementById('tag-select');
-            const assetSelect = document.getElementById('asset-select');
-            const assetSearch = document.getElementById('asset-search');
+        function toggleRecurForever() {
+            const forever = document.getElementById('recur_forever').checked;
+            document.getElementById('recur_until').disabled = forever;
+            if (forever) document.getElementById('recur_until').value = '';
+        }
 
-            // Store original options
-            const originalOptions = Array.from(assetSelect.options);
+        // Asset Modal Logic
+        let assets = <?php echo json_encode($all_assets); ?>;
 
-            function filterAssets() {
-                // For multi-tag, this simple filter is tricky. 
-                // Let's just show all assets for now, or filter if ANY selected tag matches?
-                // Simplification: Show all assets.
-                // Or: If user selects Tag A, show assets with Tag A.
-                // Since it's multi-select, let's just show all assets that match ANY selected tag.
+        function openAssetModal() {
+            document.getElementById('assetSelectionModal').style.display = 'block';
+            filterAssetModal();
+        }
 
-                const selectedOptions = Array.from(tagSelect.selectedOptions).map(opt => opt.value);
-                const searchText = assetSearch.value.toLowerCase();
+        function closeAssetModal() {
+            document.getElementById('assetSelectionModal').style.display = 'none';
+        }
 
-                assetSelect.innerHTML = '';
+        function filterAssetModal() {
+            const search = document.getElementById('assetModalSearch').value.toLowerCase();
+            const list = document.getElementById('assetModalList');
+            list.innerHTML = '';
 
-                originalOptions.forEach(opt => {
-                    if (opt.value === "") {
-                        assetSelect.appendChild(opt);
-                        return;
+            // Get selected tags from main form
+            const selectedTags = Array.from(document.querySelectorAll('input[name="tag_ids[]"]:checked')).map(cb => cb.value);
+
+            assets.forEach(asset => {
+                const name = (asset.display_name || asset.filename_original).toLowerCase();
+                if (name.includes(search)) {
+                    const div = document.createElement('div');
+                    div.className = 'asset-item';
+                    div.style.border = '1px solid #444';
+                    div.style.padding = '10px';
+                    div.style.cursor = 'pointer';
+                    div.style.borderRadius = '4px';
+                    div.style.background = '#2a2a2a';
+
+                    // Check tag match
+                    let tagMatch = false;
+                    const assetTags = asset.tag_ids ? asset.tag_ids.split(',') : [];
+                    if (selectedTags.length === 0) tagMatch = true;
+                    else {
+                        // If asset has ANY of the selected tags
+                        selectedTags.forEach(t => {
+                            if (assetTags.includes(t)) tagMatch = true;
+                        });
                     }
 
-                    // assetTagId is now potentially multiple? No, the select option data-tag-id is single from old code.
-                    // We need to update how we fetch assets to include all their tags.
-                    // For now, let's just rely on search text and maybe relax the tag filter.
-                    // Or better: The asset list query needs to be updated to fetch tags.
-
-                    // Let's just show all assets if no search text, or filter by text.
-                    // Ignoring tag filter for assets in this view for simplicity as assets can have multiple tags too.
-
-                    const assetName = opt.text.toLowerCase();
-                    const searchMatch = assetName.includes(searchText);
-
-                    if (searchMatch) {
-                        assetSelect.appendChild(opt);
+                    if (!tagMatch && selectedTags.length > 0) {
+                        div.style.opacity = '0.5';
+                        div.title = "Tag Mismatch";
                     }
-                });
+
+                    // Thumbnail
+                    let thumb = '';
+                    if (asset.mime_type.includes('image')) {
+                        thumb = `<img src="serve_asset.php?id=${asset.id}" style="width:100%; aspect-ratio:16/9; object-fit:cover; margin-bottom:5px;">`;
+                    } else if (asset.mime_type.includes('video')) {
+                        thumb = `<div style="width:100%; aspect-ratio:16/9; background:#000; display:flex; align-items:center; justify-content:center; margin-bottom:5px;"><span style="font-size:20px;">▶</span></div>`;
+                    }
+
+                    div.innerHTML = `
+                        ${thumb}
+                        <div style="font-weight:bold; font-size:0.9em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${asset.display_name || asset.filename_original}</div>
+                    `;
+
+                    div.onclick = function () {
+                        selectAsset(asset.id, asset.display_name || asset.filename_original);
+                    };
+
+                    list.appendChild(div);
+                }
+            });
+        }
+
+        function selectAsset(id, name) {
+            document.getElementById('selected_asset_id').value = id;
+            document.getElementById('selected_asset_name').value = name;
+            closeAssetModal();
+
+            // Check tags warning
+            const selectedTags = Array.from(document.querySelectorAll('input[name="tag_ids[]"]:checked')).map(cb => cb.value);
+            const asset = assets.find(a => a.id == id);
+            const assetTags = asset.tag_ids ? asset.tag_ids.split(',') : [];
+
+            let match = false;
+            if (selectedTags.length === 0) match = true;
+            selectedTags.forEach(t => { if (assetTags.includes(t)) match = true; });
+
+            const warning = document.getElementById('asset-warning');
+            if (!match && selectedTags.length > 0) {
+                warning.style.display = 'block';
+                warning.innerText = "Warning: Selected asset does not share any tags with this event.";
+            } else {
+                warning.style.display = 'none';
             }
+        }
 
-            // tagSelect.addEventListener('change', filterAssets); // Disable tag filter for now
-            assetSearch.addEventListener('input', filterAssets);
+        function toggleAssetModalUpload() {
+            const div = document.getElementById('assetModalUpload');
+            div.style.display = div.style.display === 'none' ? 'block' : 'none';
+        }
 
-            // Initial filter
-            filterAssets();
-        });
+        function uploadAssetInModal() {
+            const fileInput = document.getElementById('modalAssetFile');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('action', 'upload_asset');
+            formData.append('asset', file);
+
+            // Add selected tags to upload
+            const selectedTags = Array.from(document.querySelectorAll('input[name="tag_ids[]"]:checked')).map(cb => cb.value);
+            selectedTags.forEach(t => formData.append('tag_ids[]', t));
+
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerText = 'Uploading...';
+
+            fetch('api_upload.php', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => response.json())
+                .then(data => {
+                    btn.disabled = false;
+                    btn.innerText = 'Upload';
+                    if (data.success) {
+                        // Refresh assets list
+                        // We can't easily refresh the PHP array 'assets' without reload or separate API.
+                        // For now, let's just reload the page or alert success.
+                        // Better: Add to 'assets' array manually.
+                        assets.unshift({
+                            id: data.asset.id,
+                            filename_original: data.asset.filename_original,
+                            display_name: data.asset.display_name,
+                            mime_type: data.asset.mime_type,
+                            tag_ids: selectedTags.join(',')
+                        });
+                        filterAssetModal();
+                        toggleAssetModalUpload();
+                        selectAsset(data.asset.id, data.asset.display_name || data.asset.filename_original);
+                    } else {
+                        alert('Upload failed: ' + (data.errors ? data.errors.join(', ') : 'Unknown error'));
+                    }
+                })
+                .catch(err => {
+                    btn.disabled = false;
+                    btn.innerText = 'Upload';
+                    alert('Upload error.');
+                    console.error(err);
+                });
+        }
     </script>
 </head>
 
@@ -353,79 +413,82 @@ $default_end_time = $default_end->format('H:i');
         <?php endif; ?>
 
         <div class="card">
-            <form action="create_event.php" method="POST" enctype="multipart/form-data">
+            <form action="create_event.php" method="POST">
 
                 <div class="form-group">
                     <label>Event Name</label>
                     <input type="text" name="event_name" value="<?php echo htmlspecialchars($event_name); ?>" required>
                 </div>
 
+                <div class="form-group">
+                    <label>Start Date</label>
+                    <input type="date" name="start_date" value="<?php echo $default_date; ?>"
+                        min="<?php echo date('Y-m-d'); ?>" required>
+                </div>
+
                 <div class="row">
-                    <div class="col">
-                        <div class="form-group">
-                            <label>Start Date</label>
-                            <input type="date" name="start_date" value="<?php echo $default_date; ?>"
-                                min="<?php echo date('Y-m-d'); ?>" required>
-                        </div>
-                    </div>
                     <div class="col">
                         <div class="form-group">
                             <label>Start Time</label>
                             <input type="time" name="start_time" value="<?php echo $default_time; ?>" required>
                         </div>
                     </div>
+                    <div class="col">
+                        <div class="form-group">
+                            <label>End Time</label>
+                            <input type="time" name="end_time" value="<?php echo $default_end_time; ?>" required>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-group">
-                    <label>End Time (Duration: 1h default)</label>
-                    <input type="time" name="end_time" value="<?php echo $default_end_time; ?>" required>
-                    <small style="color:#777;">If earlier than start time, next day is assumed.</small>
+                    <label>Recurrence</label>
+                    <select name="recurrence" id="recurrence" onchange="toggleRecurrence()">
+                        <option value="none">None (One-time)</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                    </select>
                 </div>
 
-                <div class="row">
-                    <div class="col">
-                        <div class="form-group">
-                            <label>Recurrence</label>
-                            <select name="recurrence" id="recurrence" onchange="toggleRecurrence()">
-                                <option value="none">None (One-time)</option>
-                                <option value="daily">Daily</option>
-                                <option value="weekly">Weekly</option>
-                            </select>
+                <div id="recur-options"
+                    style="display:none; padding:10px; background:#2a2a2a; margin-bottom:15px; border-radius:4px;">
+                    <div class="form-group">
+                        <label>Repeat Until</label>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <input type="date" name="recur_until" id="recur_until">
+                            <label><input type="checkbox" name="recur_forever" id="recur_forever"
+                                    onchange="toggleRecurForever()"> Forever</label>
                         </div>
                     </div>
-                    <div class="col">
-                        <div class="form-group" id="recur-until-group" style="display:none;">
-                            <label>Repeat Until</label>
-                            <input type="date" name="recur_until">
-                        </div>
-                    </div>
-                </div>
 
-                <div class="form-group" id="recur-days-group" style="display:none;">
-                    <label>Repeat On (Weekly)</label>
-                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                        <label><input type="checkbox" name="recur_days[]" value="0"> Sun</label>
-                        <label><input type="checkbox" name="recur_days[]" value="1"> Mon</label>
-                        <label><input type="checkbox" name="recur_days[]" value="2"> Tue</label>
-                        <label><input type="checkbox" name="recur_days[]" value="3"> Wed</label>
-                        <label><input type="checkbox" name="recur_days[]" value="4"> Thu</label>
-                        <label><input type="checkbox" name="recur_days[]" value="5"> Fri</label>
-                        <label><input type="checkbox" name="recur_days[]" value="6"> Sat</label>
+                    <div class="form-group" id="recur-days-group" style="display:none;">
+                        <label>Repeat On (Weekly)</label>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <label><input type="checkbox" name="recur_days[]" value="0"> Sun</label>
+                            <label><input type="checkbox" name="recur_days[]" value="1"> Mon</label>
+                            <label><input type="checkbox" name="recur_days[]" value="2"> Tue</label>
+                            <label><input type="checkbox" name="recur_days[]" value="3"> Wed</label>
+                            <label><input type="checkbox" name="recur_days[]" value="4"> Thu</label>
+                            <label><input type="checkbox" name="recur_days[]" value="5"> Fri</label>
+                            <label><input type="checkbox" name="recur_days[]" value="6"> Sat</label>
+                        </div>
                     </div>
                 </div>
 
                 <div class="row">
                     <div class="col">
                         <div class="form-group">
-                            <label>Output Tags (Hold Ctrl/Cmd to select multiple)</label>
-                            <select name="tag_ids[]" id="tag-select" multiple required style="height: 100px;">
+                            <label>Output Tags</label>
+                            <div class="tag-toggle-group">
                                 <?php foreach ($tags as $tag): ?>
-                                    <option value="<?php echo $tag['id']; ?>" <?php if (in_array($tag['id'], $selected_tag_ids))
-                                           echo 'selected'; ?>>
+                                    <label
+                                        class="tag-toggle <?php echo in_array($tag['id'], $selected_tag_ids) ? 'active' : ''; ?>"
+                                        onclick="this.classList.toggle('active')">
                                         <?php echo htmlspecialchars($tag['tag_name']); ?>
-                                    </option>
+                                        <input type="checkbox" name="tag_ids[]" value="<?php echo $tag['id']; ?>" <?php echo in_array($tag['id'], $selected_tag_ids) ? 'checked' : ''; ?>>
+                                    </label>
                                 <?php endforeach; ?>
-                            </select>
+                            </div>
                         </div>
                     </div>
                     <div class="col">
@@ -440,45 +503,53 @@ $default_end_time = $default_end->format('H:i');
                                     echo 'selected'; ?>>High (Preempts others)
                                 </option>
                             </select>
+                            <small style="color:#aaa; display:block; margin-top:5px;">High priority events will
+                                interrupt lower priority events playing at the same time.</small>
                         </div>
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label>Asset Selection</label>
-                    <div style="margin-bottom:10px;">
-                        <label style="display:inline; margin-right:15px;">
-                            <input type="radio" name="asset_mode" value="existing" checked onclick="toggleAssetMode()"
-                                style="width:auto;"> Use Existing Asset
-                        </label>
-                        <label style="display:inline;">
-                            <input type="radio" name="asset_mode" value="upload" onclick="toggleAssetMode()"
-                                style="width:auto;"> Upload New
-                        </label>
+                    <label>Asset</label>
+                    <div style="display:flex; gap:10px;">
+                        <input type="hidden" name="existing_asset_id" id="selected_asset_id"
+                            value="<?php echo $asset_id; ?>">
+                        <input type="text" id="selected_asset_name" readonly
+                            value="<?php echo htmlspecialchars($selected_asset_name); ?>"
+                            style="flex:1; background:#333; border:1px solid #444; color:#fff; padding:8px;">
+                        <button type="button" class="btn btn-secondary" onclick="openAssetModal()">Select Asset</button>
                     </div>
-
-                    <div id="mode-existing">
-                        <input type="text" id="asset-search" placeholder="Search assets..."
-                            style="margin-bottom:5px; padding:5px; width:100%; box-sizing:border-box;">
-                        <select name="existing_asset_id" id="asset-select">
-                            <option value="">-- Select Asset --</option>
-                            <?php foreach ($all_assets as $a): ?>
-                                <option value="<?php echo $a['id']; ?>" data-tag-id="<?php echo $a['tag_id']; ?>" <?php if ($a['id'] == $asset_id)
-                                          echo 'selected'; ?>>
-                                    <?php echo htmlspecialchars($a['filename_original']); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <div id="mode-upload" style="display:none;">
-                        <input type="file" name="asset">
-                    </div>
+                    <div id="asset-warning" style="color:orange; display:none; margin-top:5px;"></div>
                 </div>
 
                 <button type="submit" class="btn">Create Event</button>
 
             </form>
+        </div>
+    </div>
+
+    <!-- Asset Selection Modal -->
+    <div id="assetSelectionModal" class="modal">
+        <div class="modal-content" style="width: 80%; max-width: 800px;">
+            <span class="close" onclick="closeAssetModal()">&times;</span>
+            <h2>Select Asset</h2>
+            <div style="margin-bottom: 15px; display:flex; justify-content:space-between; gap:10px;">
+                <input type="text" id="assetModalSearch" placeholder="Search assets..." onkeyup="filterAssetModal()"
+                    style="flex:1;">
+                <button type="button" class="btn btn-sm" onclick="toggleAssetModalUpload()">+ Upload New</button>
+            </div>
+
+            <div id="assetModalUpload"
+                style="display:none; margin-bottom:15px; padding:15px; background:#222; border-radius:4px;">
+                <h3>Upload New Asset</h3>
+                <input type="file" id="modalAssetFile" style="margin-bottom:10px;">
+                <button type="button" class="btn btn-sm" onclick="uploadAssetInModal()">Upload & Select</button>
+            </div>
+
+            <div id="assetModalList"
+                style="display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:10px; max-height:400px; overflow-y:auto;">
+                <!-- JS populates this -->
+            </div>
         </div>
     </div>
 

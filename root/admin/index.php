@@ -41,6 +41,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             exit;
         }
     }
+
+    if (isset($_POST['action']) && $_POST['action'] == 'extend_event') {
+        $event_id = (int) $_POST['event_id'];
+        // Verify permission
+        $stmt = $pdo->prepare("SELECT tag_id, end_time FROM events WHERE id = ?");
+        $stmt->execute([$event_id]);
+        $evt = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($evt && in_array($evt['tag_id'], $allowed_tag_ids)) {
+            $new_end = date('Y-m-d H:i:s', strtotime($evt['end_time'] . ' +15 minutes'));
+            $pdo->prepare("UPDATE events SET end_time = ? WHERE id = ?")->execute([$new_end, $event_id]);
+            header("Location: index.php");
+            exit;
+        }
+    }
     if (isset($_POST['action']) && $_POST['action'] == 'delete_event') {
         $event_id = (int) $_POST['event_id'];
         $stmt = $pdo->prepare("SELECT tag_id FROM event_tags WHERE event_id = ?");
@@ -286,13 +301,21 @@ if ($view == 'list') {
                                 <?php echo $is_live ? 'LIVE' : 'DEFAULT'; ?>
                             </span>
                             <?php if ($is_live): ?>
-                                <form method="POST" onsubmit="return confirm('End this event now?');" style="margin:0;">
-                                    <input type="hidden" name="action" value="end_now">
-                                    <input type="hidden" name="event_id" value="<?php echo $asset['id']; ?>">
-                                    <button type="submit"
-                                        style="background:var(--error-color); color:#fff; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:0.8em;">End
-                                        Now</button>
-                                </form>
+                                <div style="display:flex; gap:5px;">
+                                    <form method="POST" style="margin:0;">
+                                        <input type="hidden" name="action" value="extend_event">
+                                        <input type="hidden" name="event_id" value="<?php echo $asset['id']; ?>">
+                                        <button type="submit"
+                                            style="background:var(--secondary-color); color:#fff; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:0.8em;">+15m</button>
+                                    </form>
+                                    <form method="POST" onsubmit="return confirm('End this event now?');" style="margin:0;">
+                                        <input type="hidden" name="action" value="end_now">
+                                        <input type="hidden" name="event_id" value="<?php echo $asset['id']; ?>">
+                                        <button type="submit"
+                                            style="background:var(--error-color); color:#fff; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:0.8em;">End
+                                            Now</button>
+                                    </form>
+                                </div>
                             <?php endif; ?>
                         </div>
                     </div>

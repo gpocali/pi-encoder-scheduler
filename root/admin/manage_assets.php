@@ -206,48 +206,50 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
             $file_path = '/uploads/' . $asset_to_del['filename_disk'];
             if (file_exists($file_path))
                 unlink($file_path);
+
+            // Delete from DB
             $pdo->prepare("DELETE FROM assets WHERE id = ?")->execute([$asset_id]);
-            $success_message = "Asset deleted.";
+            $success_message = "Asset deleted successfully.";
         }
     } else {
-        $errors[] = "Permission denied.";
+        $errors[] = "You do not have permission to delete this asset.";
     }
 }
 
 // Fetch Assets
-// Filter Logic
-$filter_tag_id = isset($_GET['filter_tag']) && $_GET['filter_tag'] !== '' ? (int) $_GET['filter_tag'] : null;
+$filter_tag_id = isset($_GET['filter_tag']) ? $_GET['filter_tag'] : null;
+$sql_assets = "SELECT a.*, u.username, 
+               (SELECT GROUP_CONCAT(t.tag_name SEPARATOR ', ') FROM default_assets da JOIN tags t ON da.tag_id = t.id WHERE da.asset_id = a.id) as default_for_tags
+               FROM assets a 
+               LEFT JOIN users u ON a.uploaded_by = u.id 
+               LEFT JOIN asset_tags at ON a.id = at.asset_id
+               WHERE 1=1";
+$params = [];
 
-// Fetch Assets
-$in_clause = implode(',', array_fill(0, count($allowed_tag_ids), '?'));
-$params = $allowed_tag_ids;
-
-$sql_assets = "
-    SELECT DISTINCT a.*, u.username 
-    FROM assets a 
-    LEFT JOIN asset_tags at ON a.id = at.asset_id
-    LEFT JOIN users u ON a.uploaded_by = u.id 
-    WHERE (at.tag_id IN ($in_clause)";
-
-if ($is_admin) {
-    $sql_assets .= " OR at.tag_id IS NULL";
+// Filter by allowed tags
+if (!$is_admin && !empty($allowed_tag_ids)) {
+    $in_clause = implode(',', array_fill(0, count($allowed_tag_ids), '?'));
+    $sql_assets .= " AND (a.uploaded_by = ? OR at.tag_id IN ($in_clause))";
+    $params[] = $user_id;
+    $params = array_merge($params, $allowed_tag_ids);
+} elseif (!$is_admin && empty($allowed_tag_ids)) {
+    $sql_assets .= " AND a.uploaded_by = ?";
+    $params[] = $user_id;
 }
-$sql_assets .= ")";
 
 if ($filter_tag_id) {
-    if (in_array($filter_tag_id, $allowed_tag_ids)) {
-        $sql_assets .= " AND at.tag_id = ?";
-        $params[] = $filter_tag_id;
-    }
+    $sql_assets .= " AND at.tag_id = ?";
+    $params[] = $filter_tag_id;
 }
 
-$sql_assets .= " ORDER BY a.created_at DESC";
+$sql_assets .= " GROUP BY a.id ORDER BY a.created_at DESC";
 
 $stmt_assets = $pdo->prepare($sql_assets);
 $stmt_assets->execute($params);
 $assets = $stmt_assets->fetchAll(PDO::FETCH_ASSOC);
 
 // Fetch Tags
+$in_clause = implode(',', array_fill(0, count($allowed_tag_ids), '?'));
 $sql_tags = "SELECT * FROM tags WHERE id IN ($in_clause) ORDER BY tag_name";
 $stmt_tags = $pdo->prepare($sql_tags);
 $stmt_tags->execute($allowed_tag_ids);
@@ -276,12 +278,9 @@ function formatBytes($bytes, $precision = 2)
 </head>
 
 <body>
-
     <?php include 'navbar.php'; ?>
-
     <div class="container">
         <h1>Manage Assets</h1>
-
         <?php if (!empty($errors)): ?>
             <div class="message error">
                 <ul><?php foreach ($errors as $e)
@@ -300,8 +299,23 @@ function formatBytes($bytes, $precision = 2)
             </div>
             <div class="card" style="flex: 1; text-align: center; margin-bottom:0;">
                 <div style="font-size: 2em; font-weight: bold; color: var(--secondary-color);">
-                    <?php echo formatBytes($total_space); ?></div>
-                <div>Total Space Used</div>
+                    <?php
+                    if ($filter_tag_id) {
+                        $stmt_limit = $pdo->prepare("SELECT storage_limit_mb FROM tags WHERE id = ?");
+                        $stmt_limit->execute([$filter_tag_id]);
+                        $limit_mb = $stmt_limit->fetchColumn();
+                        if ($limit_mb > 0) {
+                            $percent = ($total_space / ($limit_mb * 1024 * 1024)) * 100;
+                            echo round($percent, 1) . '%';
+                        } else {
+                            echo formatBytes($total_space);
+                        }
+                    } else {
+                        echo formatBytes($total_space);
+                    }
+                    ?>
+                </div>
+                <div>Total Space Used <?php echo $filter_tag_id && $limit_mb > 0 ? "(of Limit)" : ""; ?></div>
             </div>
         </div>
 
@@ -326,20 +340,10 @@ function formatBytes($bytes, $precision = 2)
             </form>
         </div>
 
-        <?php if ($is_admin): ?>
-            <div class="card">
-                <h2>Admin Tools</h2>
-                <form method="POST" onsubmit="return confirm('Scan uploads folder for missing assets?');">
-                    <input type="hidden" name="action" value="scan_index">
-                    <p>Scan the <code>/uploads</code> directory for files not in the database and index them.</p>
-                    <button type="submit" class="btn-secondary">Scan & Index Missing Assets</button>
-                </form>
-            </div>
-        <?php endif; ?>
-
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <h2>Asset Library</h2>
-            <form method="GET" style="display:flex; gap:10px;">
+        <div class="controls"
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1em; flex-wrap: wrap; gap: 10px;">
+            <h2 style="margin:0;">Asset Library</h2>
+            <form class="filters" method="GET" style="display:flex; gap:10px; align-items:center;">
                 <select name="filter_tag" onchange="this.form.submit()" style="padding:5px;">
                     <option value="">All Tags</option>
                     <?php foreach ($available_tags as $tag): ?>
@@ -359,9 +363,8 @@ function formatBytes($bytes, $precision = 2)
                     $is_image = strpos($asset['mime_type'], 'image') !== false;
                     $is_video = strpos($asset['mime_type'], 'video') !== false;
                     ?>
-
-                    <div
-                        style="aspect-ratio: 16/9; width: 100%; background: #000; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; overflow: hidden; border-radius: 4px;">
+                    <div onclick="showPreview('<?php echo $file_url; ?>', '<?php echo $asset['mime_type']; ?>')"
+                        style="aspect-ratio: 16/9; width: 100%; background: #000; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; overflow: hidden; border-radius: 4px; cursor: pointer;">
                         <?php if ($is_image): ?>
                             <img src="<?php echo $file_url; ?>" style="width: 100%; height: 100%; object-fit: cover;">
                         <?php elseif ($is_video): ?>
@@ -371,16 +374,22 @@ function formatBytes($bytes, $precision = 2)
                         <?php endif; ?>
                     </div>
 
+                    <?php if (!empty($asset['default_for_tags'])): ?>
+                        <div style="font-size: 0.8em; color: var(--accent-color); font-weight: bold; margin-bottom: 5px;">
+                            Default: <?php echo htmlspecialchars($asset['default_for_tags']); ?>
+                        </div>
+                    <?php endif; ?>
+
                     <div style="font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px;"
-                        title="<?php echo htmlspecialchars($asset['filename_original']); ?>">
-                        <?php echo htmlspecialchars($asset['filename_original']); ?>
+                        title="<?php echo htmlspecialchars($asset['display_name'] ?? $asset['filename_original']); ?>">
+                        <?php echo htmlspecialchars($asset['display_name'] ?? $asset['filename_original']); ?>
                     </div>
 
                     <div style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">
                         Size: <?php echo formatBytes($asset['size_bytes']); ?><br>
                         <?php
                         // Fetch tags for this asset
-                        $stmt_at = $pdo->prepare("SELECT t.tag_name FROM asset_tags at JOIN tags t ON at.tag_id = t.id WHERE at.asset_id = ?");
+                        $stmt_at = $pdo->prepare("SELECT t.tag_name FROM asset_tags at JOIN tags t ON at.asset_id = ? AND at.tag_id = t.id");
                         $stmt_at->execute([$asset['id']]);
                         $at_names = $stmt_at->fetchAll(PDO::FETCH_COLUMN);
                         $tag_display = empty($at_names) ? 'None' : implode(', ', $at_names);
@@ -390,24 +399,49 @@ function formatBytes($bytes, $precision = 2)
                         Date: <?php echo date('M j, Y', strtotime($asset['created_at'])); ?>
                     </div>
 
-                    <?php if ($is_admin || $asset['uploaded_by'] == $_SESSION['user_id']): ?>
-                        <form method="POST" onsubmit="return confirm('Delete this asset? This cannot be undone.');">
-                            <input type="hidden" name="action" value="delete_asset">
-                            <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
-                            <button type="submit" class="btn-delete" style="width: 100%; padding: 0.5em;">Delete</button>
-                        </form>
-                    <?php endif; ?>
+                    <div style="display:flex; gap:10px;">
+                        <a href="edit_asset.php?id=<?php echo $asset['id']; ?>" class="btn btn-sm btn-secondary"
+                            style="flex:1; text-align:center;">Edit</a>
+                        <?php if (($is_admin || $asset['uploaded_by'] == $_SESSION['user_id']) && empty($asset['default_for_tags'])): ?>
+                            <form method="POST" onsubmit="return confirm('Delete this asset? This cannot be undone.');"
+                                style="flex:1;">
+                                <input type="hidden" name="action" value="delete_asset">
+                                <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
+                                <button type="submit" class="btn-delete btn-sm" style="width: 100%;">Delete</button>
+                            </form>
+                        <?php else: ?>
+                            <button class="btn-delete btn-sm" style="flex:1; opacity:0.5; cursor:not-allowed;"
+                                disabled>Delete</button>
+                        <?php endif; ?>
+                    </div>
                 </div>
             <?php endforeach; ?>
         </div>
-
     </div>
-
     <footer>
         &copy;<?php echo date("Y") > 2025 ? "2025-" . date("Y") : "2025"; ?> WRHU Radio Hofstra University. Written by
         Gregory Pocali for WRHU with assistance from Google Gemini 3.
     </footer>
 
+    <!-- Large Preview Modal -->
+    <div id="previewModal" class="modal" onclick="this.style.display='none'">
+        <div class="modal-content preview-modal-content">
+            <span class="close">&times;</span>
+            <div id="previewContainer"></div>
+        </div>
+    </div>
+    <script>
+        function showPreview(url, type) {
+            const container = document.getElementById('previewContainer');
+            container.innerHTML = '';
+            if (type.includes('image')) {
+                container.innerHTML = '<img src="' + url + '" class="preview-media">';
+            } else if (type.includes('video')) {
+                container.innerHTML = '<video src="' + url + '" controls autoplay class="preview-media"></video>';
+            }
+            document.getElementById('previewModal').style.display = 'block';
+        }
+    </script>
 </body>
 
 </html>

@@ -29,8 +29,7 @@ if (empty($current_tag_ids) && $event['tag_id']) {
     $current_tag_ids[] = $event['tag_id'];
 }
 
-// Check Permission (Must have permission for ALL tags? Or ANY? Let's say ANY for now to allow editing, but maybe restrict adding tags user doesn't own)
-// Better: User must have permission for at least one of the event's tags to edit it.
+// Check Permission
 $has_permission = false;
 $user_id = $_SESSION['user_id'];
 $allowed_tag_ids = [];
@@ -83,7 +82,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
     $start_time_val = $_POST['start_time'];
     $end_time_val = $_POST['end_time'];
     $priority = (int) $_POST['priority'];
-    $asset_selection_mode = $_POST['asset_mode'];
+    $asset_id = (int) $_POST['existing_asset_id'];
     $update_scope = $_POST['update_scope'] ?? 'only_this';
     $selected_tag_ids = $_POST['tag_ids'] ?? [];
 
@@ -103,34 +102,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
     if ($end_dt <= $start_dt)
         $end_dt->modify('+1 day');
 
-    // Asset Logic
-    $asset_id = $event['asset_id']; // Default to current
-    if ($asset_selection_mode == 'upload') {
-        if (isset($_FILES['asset']) && $_FILES['asset']['error'] == UPLOAD_ERR_OK) {
-            $asset = $_FILES['asset'];
-            $tmp_name = $asset['tmp_name'];
-            $md5 = md5_file($tmp_name);
-            $stmt_check = $pdo->prepare("SELECT id FROM assets WHERE md5_hash = ?");
-            $stmt_check->execute([$md5]);
-            if ($existing = $stmt_check->fetch()) {
-                $asset_id = $existing['id'];
-            } else {
-                $safe_filename = uniqid('asset_', true) . '_' . preg_replace("/[^a-zA-Z0-9\._-]/", "", basename($asset['name']));
-                $upload_path = '/uploads/' . $safe_filename;
-                move_uploaded_file($tmp_name, $upload_path);
-                $stmt_ins = $pdo->prepare("INSERT INTO assets (filename_disk, filename_original, mime_type, md5_hash, uploaded_by, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
-                $stmt_ins->execute([$safe_filename, basename($asset['name']), $asset['type'], $md5, $_SESSION['user_id'], $asset['size']]);
-                $asset_id = $pdo->lastInsertId();
-
-                // Link tags (use event tags)
-                $stmt_at = $pdo->prepare("INSERT INTO asset_tags (asset_id, tag_id) VALUES (?, ?)");
-                foreach ($selected_tag_ids as $tid) {
-                    $stmt_at->execute([$asset_id, $tid]);
-                }
-            }
-        }
-    } elseif ($asset_selection_mode == 'existing') {
-        $asset_id = (int) $_POST['existing_asset_id'];
+    if ($asset_id <= 0) {
+        $errors[] = "Please select an asset.";
     }
 
     if (empty($errors)) {
@@ -169,11 +142,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
 
             foreach ($targets as $tid) {
                 // Apply Delta to times
-                // We need to fetch current time for each target to apply delta? 
-                // Or can we do it in SQL? MySQL DATE_ADD is easy.
-                // But we also update other fields.
-                // Let's do SQL update.
-
                 $sql_upd = "UPDATE events SET 
                             event_name = ?, 
                             asset_id = ?, 
@@ -260,8 +228,26 @@ $current_date = $start_dt_local->format('Y-m-d');
 $current_start_time = $start_dt_local->format('H:i');
 $current_end_time = $end_dt_local->format('H:i');
 
-$sql_assets = "SELECT id, filename_original FROM assets ORDER BY created_at DESC";
+// Fetch assets with tags
+$sql_assets = "
+    SELECT a.id, a.filename_original, a.display_name, a.filename_disk, a.mime_type,
+           GROUP_CONCAT(at.tag_id) as tag_ids
+    FROM assets a
+    LEFT JOIN asset_tags at ON a.id = at.asset_id
+    GROUP BY a.id
+    ORDER BY a.created_at DESC";
 $all_assets = $pdo->query($sql_assets)->fetchAll(PDO::FETCH_ASSOC);
+
+// Pre-select asset name
+$selected_asset_name = "No Asset Selected";
+if ($event['asset_id'] > 0) {
+    foreach ($all_assets as $a) {
+        if ($a['id'] == $event['asset_id']) {
+            $selected_asset_name = $a['display_name'] ?? $a['filename_original'];
+            break;
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -271,10 +257,148 @@ $all_assets = $pdo->query($sql_assets)->fetchAll(PDO::FETCH_ASSOC);
     <title>Edit Event - WRHU Encoder Scheduler</title>
     <link rel="stylesheet" href="style.css">
     <script>
-        function toggleAssetMode() {
-            const mode = document.querySelector('input[name="asset_mode"]:checked').value;
-            document.getElementById('mode-existing').style.display = mode === 'existing' ? 'block' : 'none';
-            document.getElementById('mode-upload').style.display = mode === 'upload' ? 'block' : 'none';
+        // Asset Modal Logic
+        let assets = <?php echo json_encode($all_assets); ?>;
+
+        function openAssetModal() {
+            document.getElementById('assetSelectionModal').style.display = 'block';
+            filterAssetModal();
+        }
+
+        function closeAssetModal() {
+            document.getElementById('assetSelectionModal').style.display = 'none';
+        }
+
+        function filterAssetModal() {
+            const search = document.getElementById('assetModalSearch').value.toLowerCase();
+            const list = document.getElementById('assetModalList');
+            list.innerHTML = '';
+
+            // Get selected tags from main form
+            const selectedTags = Array.from(document.querySelectorAll('input[name="tag_ids[]"]:checked')).map(cb => cb.value);
+
+            assets.forEach(asset => {
+                const name = (asset.display_name || asset.filename_original).toLowerCase();
+                if (name.includes(search)) {
+                    const div = document.createElement('div');
+                    div.className = 'asset-item';
+                    div.style.border = '1px solid #444';
+                    div.style.padding = '10px';
+                    div.style.cursor = 'pointer';
+                    div.style.borderRadius = '4px';
+                    div.style.background = '#2a2a2a';
+
+                    // Check tag match
+                    let tagMatch = false;
+                    const assetTags = asset.tag_ids ? asset.tag_ids.split(',') : [];
+                    if (selectedTags.length === 0) tagMatch = true;
+                    else {
+                        selectedTags.forEach(t => {
+                            if (assetTags.includes(t)) tagMatch = true;
+                        });
+                    }
+
+                    if (!tagMatch && selectedTags.length > 0) {
+                        div.style.opacity = '0.5';
+                        div.title = "Tag Mismatch";
+                    }
+
+                    // Thumbnail
+                    let thumb = '';
+                    if (asset.mime_type.includes('image')) {
+                        thumb = `<img src="serve_asset.php?id=${asset.id}" style="width:100%; aspect-ratio:16/9; object-fit:cover; margin-bottom:5px;">`;
+                    } else if (asset.mime_type.includes('video')) {
+                        thumb = `<div style="width:100%; aspect-ratio:16/9; background:#000; display:flex; align-items:center; justify-content:center; margin-bottom:5px;"><span style="font-size:20px;">▶</span></div>`;
+                    }
+
+                    div.innerHTML = `
+                        ${thumb}
+                        <div style="font-weight:bold; font-size:0.9em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${asset.display_name || asset.filename_original}</div>
+                    `;
+
+                    div.onclick = function () {
+                        selectAsset(asset.id, asset.display_name || asset.filename_original);
+                    };
+
+                    list.appendChild(div);
+                }
+            });
+        }
+
+        function selectAsset(id, name) {
+            document.getElementById('selected_asset_id').value = id;
+            document.getElementById('selected_asset_name').value = name;
+            closeAssetModal();
+
+            // Check tags warning
+            const selectedTags = Array.from(document.querySelectorAll('input[name="tag_ids[]"]:checked')).map(cb => cb.value);
+            const asset = assets.find(a => a.id == id);
+            const assetTags = asset.tag_ids ? asset.tag_ids.split(',') : [];
+
+            let match = false;
+            if (selectedTags.length === 0) match = true;
+            selectedTags.forEach(t => { if (assetTags.includes(t)) match = true; });
+
+            const warning = document.getElementById('asset-warning');
+            if (!match && selectedTags.length > 0) {
+                warning.style.display = 'block';
+                warning.innerText = "Warning: Selected asset does not share any tags with this event.";
+            } else {
+                warning.style.display = 'none';
+            }
+        }
+
+        function toggleAssetModalUpload() {
+            const div = document.getElementById('assetModalUpload');
+            div.style.display = div.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function uploadAssetInModal() {
+            const fileInput = document.getElementById('modalAssetFile');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('action', 'upload_asset');
+            formData.append('asset', file);
+
+            // Add selected tags to upload
+            const selectedTags = Array.from(document.querySelectorAll('input[name="tag_ids[]"]:checked')).map(cb => cb.value);
+            selectedTags.forEach(t => formData.append('tag_ids[]', t));
+
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerText = 'Uploading...';
+
+            fetch('api_upload.php', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => response.json())
+                .then(data => {
+                    btn.disabled = false;
+                    btn.innerText = 'Upload';
+                    if (data.success) {
+                        assets.unshift({
+                            id: data.asset.id,
+                            filename_original: data.asset.filename_original,
+                            display_name: data.asset.display_name,
+                            mime_type: data.asset.mime_type,
+                            tag_ids: selectedTags.join(',')
+                        });
+                        filterAssetModal();
+                        toggleAssetModalUpload();
+                        selectAsset(data.asset.id, data.asset.display_name || data.asset.filename_original);
+                    } else {
+                        alert('Upload failed: ' + (data.errors ? data.errors.join(', ') : 'Unknown error'));
+                    }
+                })
+                .catch(err => {
+                    btn.disabled = false;
+                    btn.innerText = 'Upload';
+                    alert('Upload error.');
+                    console.error(err);
+                });
         }
     </script>
 </head>
@@ -297,7 +421,7 @@ $all_assets = $pdo->query($sql_assets)->fetchAll(PDO::FETCH_ASSOC);
         <?php endif; ?>
 
         <div class="card">
-            <form action="edit_event.php?id=<?php echo $event_id; ?>" method="POST" enctype="multipart/form-data">
+            <form action="edit_event.php?id=<?php echo $event_id; ?>" method="POST">
                 <input type="hidden" name="action" value="update_event">
 
                 <div class="form-group">
@@ -307,7 +431,8 @@ $all_assets = $pdo->query($sql_assets)->fetchAll(PDO::FETCH_ASSOC);
                 </div>
 
                 <?php if ($is_series): ?>
-                    <div class="form-group" style="background:#f9f9f9; padding:10px; border:1px solid #ddd;">
+                    <div class="form-group"
+                        style="background:#2a2a2a; padding:10px; border:1px solid #444; border-radius:4px;">
                         <label style="font-weight:bold;">Recurring Event Options</label>
                         <div style="margin-top:5px;">
                             <label style="margin-right:15px;"><input type="radio" name="update_scope" value="only_this"
@@ -319,94 +444,122 @@ $all_assets = $pdo->query($sql_assets)->fetchAll(PDO::FETCH_ASSOC);
                     </div>
                 <?php endif; ?>
 
+                <div class="form-group">
+                    <label>Start Date</label>
+                    <input type="date" name="start_date" value="<?php echo $current_date; ?>" required>
+                </div>
+
                 <div class="row">
                     <div class="col">
                         <div class="form-group">
-                            <label>Output Tags (Hold Ctrl/Cmd to select multiple)</label>
-                            <select name="tag_ids[]" multiple required style="height: 100px;">
-                                <?php foreach ($tags as $tag): ?>
-                                    <option value="<?php echo $tag['id']; ?>" <?php if (in_array($tag['id'], $current_tag_ids))
-                                           echo 'selected'; ?>>
-                                        <?php echo htmlspecialchars($tag['tag_name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                            <label>Start Time</label>
+                            <input type="time" name="start_time" value="<?php echo $current_start_time; ?>" required>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>Start Date</label>
-                        <input type="date" name="start_date" value="<?php echo $current_date; ?>" required>
+                    <div class="col">
+                        <div class="form-group">
+                            <label>End Time</label>
+                            <input type="time" name="end_time" value="<?php echo $current_end_time; ?>" required>
+                        </div>
                     </div>
                 </div>
-                <div class="col">
-                    <div class="form-group">
-                        <label>Start Time</label>
-                        <input type="time" name="start_time" value="<?php echo $current_start_time; ?>" required>
+
+                <div class="row">
+                    <div class="col">
+                        <div class="form-group">
+                            <label>Output Tags</label>
+                            <div class="tag-toggle-group">
+                                <?php foreach ($tags as $tag): ?>
+                                    <label
+                                        class="tag-toggle <?php echo in_array($tag['id'], $current_tag_ids) ? 'active' : ''; ?>"
+                                        onclick="this.classList.toggle('active')">
+                                        <?php echo htmlspecialchars($tag['tag_name']); ?>
+                                        <input type="checkbox" name="tag_ids[]" value="<?php echo $tag['id']; ?>" <?php echo in_array($tag['id'], $current_tag_ids) ? 'checked' : ''; ?>>
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="form-group">
+                            <label>Priority</label>
+                            <select name="priority">
+                                <option value="0" <?php if ($event['priority'] == 0)
+                                    echo 'selected'; ?>>Low (Default)
+                                </option>
+                                <option value="1" <?php if ($event['priority'] == 1)
+                                    echo 'selected'; ?>>Medium</option>
+                                <option value="2" <?php if ($event['priority'] == 2)
+                                    echo 'selected'; ?>>High (Preempts
+                                    others)</option>
+                            </select>
+                            <small style="color:#aaa; display:block; margin-top:5px;">High priority events will
+                                interrupt lower priority events playing at the same time.</small>
+                        </div>
                     </div>
                 </div>
-        </div>
 
-        <div class="form-group">
-            <label>End Time</label>
-            <input type="time" name="end_time" value="<?php echo $current_end_time; ?>" required>
-        </div>
+                <div class="form-group">
+                    <label>Asset</label>
+                    <div style="display:flex; gap:10px;">
+                        <input type="hidden" name="existing_asset_id" id="selected_asset_id"
+                            value="<?php echo $event['asset_id']; ?>">
+                        <input type="text" id="selected_asset_name" readonly
+                            value="<?php echo htmlspecialchars($selected_asset_name); ?>"
+                            style="flex:1; background:#333; border:1px solid #444; color:#fff; padding:8px;">
+                        <button type="button" class="btn btn-secondary" onclick="openAssetModal()">Select Asset</button>
+                    </div>
+                    <div id="asset-warning" style="color:orange; display:none; margin-top:5px;"></div>
+                </div>
 
-        <div class="form-group">
-            <label>Priority</label>
-            <select name="priority">
-                <option value="0" <?php if ($event['priority'] == 0)
-                    echo 'selected'; ?>>Low (Default)</option>
-                <option value="1" <?php if ($event['priority'] == 1)
-                    echo 'selected'; ?>>Medium</option>
-                <option value="2" <?php if ($event['priority'] == 2)
-                    echo 'selected'; ?>>High (Preempts others)
-                </option>
-            </select>
-        </div>
-
-        <div class="form-group">
-            <label>Asset Selection</label>
-            <div style="margin-bottom:10px;">
-                <label style="display:inline; margin-right:15px;">
-                    <input type="radio" name="asset_mode" value="existing" checked onclick="toggleAssetMode()"
-                        style="width:auto;"> Use Existing Asset
-                </label>
-                <label style="display:inline;">
-                    <input type="radio" name="asset_mode" value="upload" onclick="toggleAssetMode()"
-                        style="width:auto;"> Upload New
-                </label>
-            </div>
-
-            <div id="mode-existing">
-                <select name="existing_asset_id">
-                    <?php foreach ($all_assets as $a): ?>
-                        <option value="<?php echo $a['id']; ?>" <?php if ($a['id'] == $event['asset_id'])
-                               echo 'selected'; ?>>
-                            <?php echo htmlspecialchars($a['filename_original']); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-
-            <div id="mode-upload" style="display:none;">
-                <input type="file" name="asset">
-            </div>
-        </div>
-
-        <button type="submit" class="btn">Update Event</button>
-        </form>
-
-        <div style="display:flex; gap:10px; margin-top:1em;">
-            <a href="create_event.php?duplicate_id=<?php echo $event_id; ?>" class="btn btn-secondary"
-                style="text-align:center; flex:1;">Duplicate Event</a>
-
-            <form action="edit_event.php?id=<?php echo $event_id; ?>" method="POST"
-                onsubmit="return confirm('Delete this event?');" style="flex:1;">
-                <input type="hidden" name="action" value="delete_event">
-                <button type="submit" class="btn-delete" style="width:100%;">Delete Event</button>
+                <button type="submit" class="btn">Update Event</button>
             </form>
+
+            <div style="display:flex; gap:10px; margin-top:1em;">
+                <a href="create_event.php?duplicate_id=<?php echo $event_id; ?>" class="btn btn-secondary"
+                    style="text-align:center; flex:1;">Duplicate Event</a>
+
+                <form action="edit_event.php?id=<?php echo $event_id; ?>" method="POST"
+                    onsubmit="return confirm('Delete this event?');" style="flex:1;">
+                    <input type="hidden" name="action" value="delete_event">
+                    <?php if ($is_series): ?>
+                        <div style="margin-bottom:5px;">
+                            <label style="margin-right:10px;"><input type="radio" name="update_scope" value="only_this"
+                                    checked> Only This</label>
+                            <label style="margin-right:10px;"><input type="radio" name="update_scope" value="future">
+                                Future</label>
+                            <label><input type="radio" name="update_scope" value="all"> All</label>
+                        </div>
+                    <?php endif; ?>
+                    <button type="submit" class="btn-delete" style="width:100%;">Delete Event</button>
+                </form>
+            </div>
         </div>
     </div>
+
+    <!-- Asset Selection Modal -->
+    <div id="assetSelectionModal" class="modal">
+        <div class="modal-content" style="width: 80%; max-width: 800px;">
+            <span class="close" onclick="closeAssetModal()">&times;</span>
+            <h2>Select Asset</h2>
+            <div style="margin-bottom: 15px; display:flex; justify-content:space-between; gap:10px;">
+                <input type="text" id="assetModalSearch" placeholder="Search assets..." onkeyup="filterAssetModal()"
+                    style="flex:1;">
+                <button type="button" class="btn btn-sm" onclick="toggleAssetModalUpload()">+ Upload New</button>
+            </div>
+
+            <div id="assetModalUpload"
+                style="display:none; margin-bottom:15px; padding:15px; background:#222; border-radius:4px;">
+                <h3>Upload New Asset</h3>
+                <input type="file" id="modalAssetFile" style="margin-bottom:10px;">
+                <button type="button" class="btn btn-sm" onclick="uploadAssetInModal()">Upload & Select</button>
+            </div>
+
+            <div id="assetModalList"
+                style="display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:10px; max-height:400px; overflow-y:auto;">
+                <!-- JS populates this -->
+            </div>
+        </div>
     </div>
 
     <footer>

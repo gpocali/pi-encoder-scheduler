@@ -140,6 +140,25 @@ try {
 
     echo "<h3>Migration (Round 3) completed successfully!</h3>";
 
+    echo "<h2>Starting Migration (Round 4 - UI Enhancements)...</h2>";
+
+    // 5. Add display_name to assets
+    try {
+        $stmt = $pdo->query("SHOW COLUMNS FROM assets LIKE 'display_name'");
+        if (!$stmt->fetch()) {
+            $pdo->exec("ALTER TABLE assets ADD COLUMN display_name VARCHAR(255) AFTER filename_original");
+            // Initialize display_name with filename_original
+            $pdo->exec("UPDATE assets SET display_name = filename_original");
+            echo "Added 'display_name' to assets.<br>";
+        } else {
+            echo "'display_name' column already exists.<br>";
+        }
+    } catch (Exception $e) {
+        echo "Error adding 'display_name': " . $e->getMessage() . "<br>";
+    }
+
+    echo "<h3>Migration (Round 4) completed successfully!</h3>";
+
 } catch (Exception $e) {
     echo "<h3>Fatal Error: " . $e->getMessage() . "</h3>";
 }

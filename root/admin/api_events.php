@@ -6,18 +6,18 @@ $start_date = $_GET['start'];
 $end_date = $_GET['end'];
 
 $sql = "
-    SELECT DISTINCT
+    SELECT 
         e.id, 
         e.event_name, 
         e.start_time, 
         e.end_time, 
         GROUP_CONCAT(t.tag_name SEPARATOR ', ') as tag_names
     FROM events e
-    JOIN event_tags et ON e.id = et.event_id
-    JOIN tags t ON et.tag_id = t.id
+    LEFT JOIN event_tags et ON e.id = et.event_id
+    LEFT JOIN tags t ON et.tag_id = t.id
     WHERE 
         e.start_time <= ? AND e.end_time >= ?
-    GROUP BY e.id
+    GROUP BY e.id, e.event_name, e.start_time, e.end_time
 ";
 
 try {
