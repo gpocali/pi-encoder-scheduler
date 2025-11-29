@@ -99,7 +99,12 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
 
             <div class="form-group" style="margin-bottom:15px;">
                 <label style="display:block; margin-bottom:5px;">File</label>
-                <input type="file" name="asset" required style="width:100%; padding:8px; background:#333; border:1px solid #444; color:#fff; border-radius:4px;">
+                <div id="global-drop-zone" class="drop-zone" style="border: 2px dashed #666; padding: 40px; text-align: center; cursor: pointer; margin-bottom: 15px; background: #222;">
+                    <p style="font-size: 1.2em; color: var(--accent-color); margin-bottom: 10px;"><i class="bi bi-cloud-arrow-up" style="font-size: 2em;"></i><br>Drag & Drop files here</p>
+                    <p style="color: #aaa;">or click to select</p>
+                    <div id="global-file-list" style="margin-top:10px; font-size:0.9em; color:#fff;"></div>
+                </div>
+                <input type="file" name="asset" id="global-file-input" required style="display:none;">
             </div>
             <button type="submit" class="btn" style="background:var(--accent-color); color:#000; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold;">
                 <i class="bi bi-upload"></i> Upload
@@ -113,6 +118,9 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
     // Modal Logic
     const uploadModal = document.getElementById('globalUploadModal');
     const uploadBtn = document.getElementById('global-upload-btn');
+    const globalDropZone = document.getElementById('global-drop-zone');
+    const globalFileInput = document.getElementById('global-file-input');
+    const globalFileList = document.getElementById('global-file-list');
 
     if (uploadBtn) {
         uploadBtn.onclick = function (e) {
@@ -129,6 +137,44 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
     window.onclick = function (event) {
         if (event.target == uploadModal) {
             uploadModal.style.display = "none";
+        }
+    }
+
+    // Drag and Drop Logic
+    globalDropZone.onclick = () => globalFileInput.click();
+
+    globalDropZone.ondragover = (e) => {
+        e.preventDefault();
+        globalDropZone.classList.add('dragover');
+        globalDropZone.style.borderColor = 'var(--accent-color)';
+        globalDropZone.style.background = 'rgba(187, 134, 252, 0.1)';
+    };
+
+    globalDropZone.ondragleave = () => {
+        globalDropZone.classList.remove('dragover');
+        globalDropZone.style.borderColor = '#666';
+        globalDropZone.style.background = '#222';
+    };
+
+    globalDropZone.ondrop = (e) => {
+        e.preventDefault();
+        globalDropZone.classList.remove('dragover');
+        globalDropZone.style.borderColor = '#666';
+        globalDropZone.style.background = '#222';
+        globalFileInput.files = e.dataTransfer.files;
+        updateGlobalFileList();
+    };
+
+    globalFileInput.onchange = updateGlobalFileList;
+
+    function updateGlobalFileList() {
+        globalFileList.innerHTML = '';
+        if (globalFileInput.files.length > 0) {
+            for (let i = 0; i < globalFileInput.files.length; i++) {
+                globalFileList.innerHTML += '<div>' + globalFileInput.files[i].name + '</div>';
+            }
+        } else {
+            globalFileList.innerHTML = '';
         }
     }
 

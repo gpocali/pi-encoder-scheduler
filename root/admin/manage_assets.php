@@ -72,14 +72,16 @@ $total_space = 0;
 foreach ($assets as $a)
     $total_space += $a['size_bytes'];
 
-function formatBytes($bytes, $precision = 2)
-{
-    $units = array('B', 'KB', 'MB', 'GB', 'TB');
-    $bytes = max($bytes, 0);
-    $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
-    $pow = min($pow, count($units) - 1);
-    $bytes /= pow(1024, $pow);
-    return round($bytes, $precision) . ' ' . $units[$pow];
+if (!function_exists('formatBytes')) {
+    function formatBytes($bytes, $precision = 2)
+    {
+        $units = array('B', 'KB', 'MB', 'GB', 'TB');
+        $bytes = max($bytes, 0);
+        $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+        $pow = min($pow, count($units) - 1);
+        $bytes /= pow(1024, $pow);
+        return round($bytes, $precision) . ' ' . $units[$pow];
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -96,7 +98,6 @@ function formatBytes($bytes, $precision = 2)
     <div class="container">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
             <h1 style="margin:0;">Manage Assets</h1>
-            <button onclick="openUploadModal()" class="btn"><i class="bi bi-cloud-upload"></i> Upload Asset</button>
         </div>
 
         <?php if (!empty($errors)): ?>
@@ -253,41 +254,6 @@ function formatBytes($bytes, $precision = 2)
         Gregory Pocali for WRHU with assistance from Google Gemini 3.
     </footer>
 
-    <!-- Upload Modal -->
-    <div id="uploadModal" class="modal">
-        <div class="modal-content" style="max-width: 700px;">
-            <span class="close" onclick="closeUploadModal()">&times;</span>
-            <h2>Upload New Asset</h2>
-            <form method="POST" enctype="multipart/form-data" id="uploadForm">
-                <input type="hidden" name="action" value="upload_asset">
-
-                <div class="form-group">
-                    <label>Select Tags (Optional)</label>
-                    <div class="tag-button-group" id="uploadTagButtons" style="display:flex; flex-wrap:wrap; gap:8px;">
-                        <?php foreach ($available_tags as $tag): ?>
-                                <button type="button" class="tag-btn" data-id="<?php echo $tag['id']; ?>" onclick="toggleUploadTag(this)" style="padding:6px 12px; background:#333; border:1px solid #555; color:#ccc; border-radius:20px; cursor:pointer; font-size:0.9em;">
-                                    <?php echo htmlspecialchars($tag['tag_name']); ?>
-                                </button>
-                        <?php endforeach; ?>
-                    </div>
-                    <div id="uploadTagInputs"></div>
-                </div>
-
-                <div class="form-group">
-                    <label>Files</label>
-                    <div id="drop-zone" class="drop-zone" style="border: 2px dashed #666; padding: 40px; text-align: center; cursor: pointer; margin-bottom: 15px;">
-                        <p style="font-size: 1.2em; color: var(--accent-color); margin-bottom: 10px;"><i class="bi bi-cloud-arrow-up" style="font-size: 2em;"></i><br>Drag & Drop files here</p>
-                        <p style="color: #aaa;">or click to select</p>
-                        <div id="file-list" style="margin-top:10px; font-size:0.9em; color:#fff;"></div>
-                    </div>
-                    <input type="file" name="assets[]" id="file-input" multiple style="display:none;">
-                </div>
-
-                <button type="submit" class="btn" style="width: 100%;">Upload Assets</button>
-            </form>
-        </div>
-    </div>
-
     <!-- Large Preview Modal -->
     <div id="previewModal" class="modal" onclick="this.style.display='none'">
         <div class="modal-content preview-modal-content">
@@ -297,92 +263,10 @@ function formatBytes($bytes, $precision = 2)
     </div>
 
     <script>
-        // Upload Modal Logic
-        const modal = document.getElementById('uploadModal');
-        const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('file-input');
-        const fileList = document.getElementById('file-list');
-
-        function openUploadModal() {
-            modal.style.display = "block";
-        }
-
-        function closeUploadModal() {
-            modal.style.display = "none";
-        }
-
         window.onclick = function(event) {
-            if (event.target == modal) {
-                closeUploadModal();
-            }
             if (event.target == document.getElementById('previewModal')) {
                  document.getElementById('previewModal').style.display = 'none';
             }
-        }
-
-        dropZone.onclick = () => fileInput.click();
-
-        dropZone.ondragover = (e) => {
-            e.preventDefault();
-            dropZone.classList.add('dragover');
-            dropZone.style.borderColor = 'var(--accent-color)';
-            dropZone.style.background = 'rgba(187, 134, 252, 0.1)';
-        };
-        dropZone.ondragleave = () => {
-            dropZone.classList.remove('dragover');
-            dropZone.style.borderColor = '#666';
-            dropZone.style.background = 'transparent';
-        };
-
-        dropZone.ondrop = (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('dragover');
-            dropZone.style.borderColor = '#666';
-            dropZone.style.background = 'transparent';
-            fileInput.files = e.dataTransfer.files;
-            updateFileList();
-        };
-
-        fileInput.onchange = updateFileList;
-
-        function updateFileList() {
-            fileList.innerHTML = '';
-            if (fileInput.files.length > 0) {
-                for (let i = 0; i < fileInput.files.length; i++) {
-                    fileList.innerHTML += '<div>' + fileInput.files[i].name + '</div>';
-                }
-            } else {
-                fileList.innerHTML = '';
-            }
-        }
-
-        function toggleUploadTag(btn) {
-            btn.classList.toggle('active');
-            if (btn.classList.contains('active')) {
-                btn.style.background = 'var(--accent-color)';
-                btn.style.color = '#000';
-                btn.style.borderColor = 'var(--accent-color)';
-                btn.style.fontWeight = 'bold';
-            } else {
-                btn.style.background = '#333';
-                btn.style.color = '#ccc';
-                btn.style.borderColor = '#555';
-                btn.style.fontWeight = 'normal';
-            }
-            updateUploadHiddenInputs();
-        }
-
-        function updateUploadHiddenInputs() {
-            const container = document.getElementById('uploadTagInputs');
-            container.innerHTML = '';
-            const activeBtns = document.querySelectorAll('#uploadTagButtons .tag-btn.active');
-            activeBtns.forEach(btn => {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'tag_ids[]';
-                input.value = btn.dataset.id;
-                container.appendChild(input);
-            });
         }
 
         // Preview Logic
