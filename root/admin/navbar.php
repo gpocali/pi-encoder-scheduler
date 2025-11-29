@@ -10,43 +10,43 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
 <nav class="navbar">
-    <div class="container navbar-content" style="display:flex; justify-content:space-between; align-items:center;">
-        <div style="display:flex; align-items:center; gap:20px;">
-            <a href="index.php" class="navbar-brand" style="font-size:1.5em; font-weight:bold; color:var(--primary-color); text-decoration:none;">
+    <div class="container navbar-content">
+        <div class="navbar-left">
+            <a href="index.php" class="navbar-brand">
                 <i class="bi bi-broadcast"></i> WRHU Scheduler
             </a>
-            <ul class="navbar-nav" style="display:flex; gap:15px; list-style:none; margin:0; padding:0;">
+            <ul class="navbar-nav">
                 <li>
-                    <a href="index.php" class="<?php echo $current_page == 'index.php' ? 'active' : ''; ?>" style="color:#fff; text-decoration:none;">
+                    <a href="index.php" class="<?php echo $current_page == 'index.php' ? 'active' : ''; ?>">
                         <i class="bi bi-speedometer2"></i> Dashboard
                     </a>
                 </li>
                 <li>
-                    <a href="manage_assets.php" class="<?php echo $current_page == 'manage_assets.php' ? 'active' : ''; ?>" style="color:#fff; text-decoration:none;">
+                    <a href="manage_assets.php" class="<?php echo $current_page == 'manage_assets.php' ? 'active' : ''; ?>">
                         <i class="bi bi-collection-play"></i> Assets
                     </a>
                 </li>
                 <li>
-                    <a href="create_event.php" class="<?php echo $current_page == 'create_event.php' ? 'active' : ''; ?>" style="color:#fff; text-decoration:none;">
+                    <a href="create_event.php" class="<?php echo $current_page == 'create_event.php' ? 'active' : ''; ?>">
                         <i class="bi bi-calendar-plus"></i> Create Event
                     </a>
                 </li>
                 <?php if ($user_role === 'admin'): ?>
                     <li>
-                        <a href="manage_users.php" class="<?php echo $current_page == 'manage_users.php' ? 'active' : ''; ?>" style="color:#fff; text-decoration:none;">
+                        <a href="manage_users.php" class="<?php echo $current_page == 'manage_users.php' ? 'active' : ''; ?>">
                             <i class="bi bi-people"></i> Users
                         </a>
                     </li>
                 <?php endif; ?>
             </ul>
         </div>
-        <div class="navbar-user" style="display:flex; align-items:center; gap:15px;">
-            <button id="global-upload-btn" class="btn btn-sm" style="background:var(--accent-color); border:none; color:#000; cursor:pointer; padding:5px 10px; border-radius:4px; font-weight:bold;">
+        <div class="navbar-user">
+            <button id="global-upload-btn" class="btn btn-sm upload-btn">
                 <i class="bi bi-cloud-upload"></i> Upload Asset
             </button>
             
             <div class="dropdown">
-                <a href="#" style="color:#aaa; text-decoration:none; display:flex; align-items:center; gap:5px;">
+                <a href="#" class="dropdown-toggle">
                     <i class="bi bi-person-circle"></i> <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?> <i class="bi bi-caret-down-fill" style="font-size:0.8em;"></i>
                 </a>
                 <div class="dropdown-content">
