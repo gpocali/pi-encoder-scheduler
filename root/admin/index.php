@@ -200,11 +200,14 @@ if ($view == 'list') {
     }
 
 } elseif ($view == 'week') {
-    // Calculate start (Mon) and end (Sun) of week for $filter_date
+    // Calculate start (Sun) and end (Sat) of week for $filter_date
     $dt = new DateTime($filter_date);
-    $dt->modify('monday this week');
+    // If today is Sunday (0), we are at start. If not, go back to last Sunday.
+    if ($dt->format('w') != 0) {
+        $dt->modify('last sunday');
+    }
     $start_week = $dt->format('Y-m-d');
-    $dt->modify('sunday this week');
+    $dt->modify('+6 days');
     $end_week = $dt->format('Y-m-d');
 
     $start_utc = (new DateTime($start_week . ' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
