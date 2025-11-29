@@ -59,6 +59,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Recurrence
     $recurrence = $_POST['recurrence'] ?? 'none';
     $recur_until = $_POST['recur_until'] ?? '';
+    $recur_days = $_POST['recur_days'] ?? []; // Array of days (0=Sun, 6=Sat)
 
     if (empty($event_name)) $errors[] = "Event name is required.";
     if (empty($start_date) || empty($start_time_val)) $errors[] = "Start date and time are required.";
@@ -138,28 +139,54 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $until_dt = new DateTime($recur_until);
                 $until_dt->setTime(23, 59, 59); // End of that day
                 
-                $interval_spec = ($recurrence == 'daily') ? 'P1D' : 'P1W';
-                $interval = new DateInterval($interval_spec);
-                
                 // Reset start_dt to local for loop
                 $start_dt->setTimezone(new DateTimeZone('America/New_York'));
                 
-                $next_start = clone $start_dt;
-                $next_start->add($interval);
-                
-                while ($next_start <= $until_dt) {
-                    $next_end = clone $next_start;
-                    $next_end->add(new DateInterval('PT' . $duration . 'S'));
+                if ($recurrence == 'weekly' && !empty($recur_days)) {
+                    // Weekly with specific days
+                    $next_start = clone $start_dt;
+                    $next_start->modify('+1 day'); // Start checking from tomorrow (parent already created)
                     
-                    $s_utc = $next_start->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-                    $e_utc = $next_end->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+                    while ($next_start <= $until_dt) {
+                        // Check if current day is in selected days
+                        // 'w' returns 0 (Sun) to 6 (Sat)
+                        if (in_array($next_start->format('w'), $recur_days)) {
+                            $next_end = clone $next_start;
+                            $next_end->add(new DateInterval('PT' . $duration . 'S'));
+                            
+                            $s_utc = $next_start->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+                            $e_utc = $next_end->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+                            
+                            $stmt_recur = $pdo->prepare("INSERT INTO events (event_name, start_time, end_time, asset_id, tag_id, priority, parent_event_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                            $stmt_recur->execute([$event_name, $s_utc, $e_utc, $asset_id, $tag_id, $priority, $parent_id]);
+                            
+                            // Restore timezone
+                            $next_start->setTimezone(new DateTimeZone('America/New_York'));
+                        }
+                        $next_start->modify('+1 day');
+                    }
+                } else {
+                    // Daily or Simple Weekly (same day each week)
+                    $interval_spec = ($recurrence == 'daily') ? 'P1D' : 'P1W';
+                    $interval = new DateInterval($interval_spec);
                     
-                    $stmt_recur = $pdo->prepare("INSERT INTO events (event_name, start_time, end_time, asset_id, tag_id, priority, parent_event_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                    $stmt_recur->execute([$event_name, $s_utc, $e_utc, $asset_id, $tag_id, $priority, $parent_id]);
-                    
-                    // Restore timezone for next iteration logic
-                    $next_start->setTimezone(new DateTimeZone('America/New_York'));
+                    $next_start = clone $start_dt;
                     $next_start->add($interval);
+                    
+                    while ($next_start <= $until_dt) {
+                        $next_end = clone $next_start;
+                        $next_end->add(new DateInterval('PT' . $duration . 'S'));
+                        
+                        $s_utc = $next_start->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+                        $e_utc = $next_end->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+                        
+                        $stmt_recur = $pdo->prepare("INSERT INTO events (event_name, start_time, end_time, asset_id, tag_id, priority, parent_event_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                        $stmt_recur->execute([$event_name, $s_utc, $e_utc, $asset_id, $tag_id, $priority, $parent_id]);
+                        
+                        // Restore timezone for next iteration logic
+                        $next_start->setTimezone(new DateTimeZone('America/New_York'));
+                        $next_start->add($interval);
+                    }
                 }
             }
             
@@ -200,6 +227,7 @@ $default_end_time = $default_end->format('H:i');
         function toggleRecurrence() {
             const val = document.getElementById('recurrence').value;
             document.getElementById('recur-until-group').style.display = val === 'none' ? 'none' : 'block';
+            document.getElementById('recur-days-group').style.display = val === 'weekly' ? 'block' : 'none';
         }
 
         // Asset Filtering Logic
@@ -313,6 +341,19 @@ $default_end_time = $default_end->format('H:i');
                             <label>Repeat Until</label>
                             <input type="date" name="recur_until">
                         </div>
+                    </div>
+                </div>
+
+                <div class="form-group" id="recur-days-group" style="display:none;">
+                    <label>Repeat On (Weekly)</label>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <label><input type="checkbox" name="recur_days[]" value="0"> Sun</label>
+                        <label><input type="checkbox" name="recur_days[]" value="1"> Mon</label>
+                        <label><input type="checkbox" name="recur_days[]" value="2"> Tue</label>
+                        <label><input type="checkbox" name="recur_days[]" value="3"> Wed</label>
+                        <label><input type="checkbox" name="recur_days[]" value="4"> Thu</label>
+                        <label><input type="checkbox" name="recur_days[]" value="5"> Fri</label>
+                        <label><input type="checkbox" name="recur_days[]" value="6"> Sat</label>
                     </div>
                 </div>
 
