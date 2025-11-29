@@ -440,13 +440,36 @@ if ($view == 'list') {
 
             <!-- Pagination -->
             <div class="pagination">
-                <?php for ($i = 1; $i <= $total_pages; $i++): ?>
-                    <a href="<?php echo urlWithParam('page', $i); ?>" class="page-link <?php if ($page == $i)
-                            echo 'active'; ?>"><?php echo $i; ?></a>
-                <?php endfor; ?>
+                <?php
+                $range = 5;
+                $show_first = ($page > $range + 1);
+                $show_last = ($page < $total_pages - $range);
+
+                if ($show_first) {
+                    echo '<a href="' . urlWithParam('page', 1) . '" class="page-link">1</a>';
+                    echo '<span class="page-link" style="border:none; background:none;">...</span>';
+                }
+
+                for ($i = max(1, $page - $range); $i <= min($total_pages, $page + $range); $i++) {
+                    $active = ($page == $i) ? 'active' : '';
+                    echo '<a href="' . urlWithParam('page', $i) . '" class="page-link ' . $active . '">' . $i . '</a>';
+                }
+
+                if ($show_last) {
+                    echo '<span class="page-link" style="border:none; background:none;">...</span>';
+                    echo '<a href="' . urlWithParam('page', $total_pages) . '" class="page-link">' . $total_pages . '</a>';
+                }
+                ?>
             </div>
 
         <?php elseif ($view == 'month'): ?>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <a href="<?php echo urlWithParam('date', date('Y-m-d', strtotime($filter_date . ' -1 month'))); ?>"
+                    class="btn btn-sm btn-secondary">&laquo; Previous Month</a>
+                <h3 style="margin:0;"><?php echo date('F Y', strtotime($start_month)); ?></h3>
+                <a href="<?php echo urlWithParam('date', date('Y-m-d', strtotime($filter_date . ' +1 month'))); ?>"
+                    class="btn btn-sm btn-secondary">Next Month &raquo;</a>
+            </div>
             <div class="calendar-grid">
                 <div class="cal-header">Sun</div>
                 <div class="cal-header">Mon</div>
@@ -478,6 +501,17 @@ if ($view == 'list') {
             </div>
 
         <?php elseif ($view == 'week'): ?>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <a href="<?php echo urlWithParam('date', date('Y-m-d', strtotime($filter_date . ' -1 week'))); ?>"
+                    class="btn btn-sm btn-secondary">&laquo; Previous Week</a>
+                <h3 style="margin:0;">
+                    <?php
+                    echo date('M j', strtotime($start_week)) . ' - ' . date('M j, Y', strtotime($end_week));
+                    ?>
+                </h3>
+                <a href="<?php echo urlWithParam('date', date('Y-m-d', strtotime($filter_date . ' +1 week'))); ?>"
+                    class="btn btn-sm btn-secondary">Next Week &raquo;</a>
+            </div>
             <div class="week-grid">
                 <?php
                 $dt = new DateTime($start_week);
