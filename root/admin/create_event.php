@@ -553,7 +553,7 @@ if ($asset_id > 0) {
                                     echo 'selected'; ?>>High (Preempts others)
                                 </option>
                             </select>
-                            <small style="color:#aaa; display:block; margin-top:5px;">High priority events will
+                            <small style="color:#aaa; display:block; margin-top:5px;">Higher priority events will
                                 interrupt lower priority events playing at the same time.</small>
                         </div>
                     </div>
