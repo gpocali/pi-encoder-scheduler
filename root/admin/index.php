@@ -188,7 +188,7 @@ if ($view == 'list') {
     $params[] = $start_utc;
     $params[] = $end_utc;
 
-    $sql = "SELECT e.*, t.tag_name FROM events e JOIN tags t ON e.tag_id = t.id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
+    $sql = "SELECT DISTINCT e.* FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $raw_events = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -214,7 +214,7 @@ if ($view == 'list') {
     $params[] = $start_utc;
     $params[] = $end_utc;
 
-    $sql = "SELECT e.*, t.tag_name FROM events e JOIN tags t ON e.tag_id = t.id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
+    $sql = "SELECT DISTINCT e.* FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $raw_events = $stmt->fetchAll(PDO::FETCH_ASSOC);
