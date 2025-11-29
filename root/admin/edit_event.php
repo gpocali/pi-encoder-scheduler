@@ -174,17 +174,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
             $pdo->commit();
             $success_message = "Event(s) updated successfully.";
 
-            // Refresh event data
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $errors[] = "Database Error: " . $e->getMessage();
+        }
+
+        if (empty($errors)) {
+             // Refresh event data (outside transaction)
             $stmt->execute([$event_id]);
             $event = $stmt->fetch(PDO::FETCH_ASSOC);
 
             // Refresh tags
             $stmt_tags->execute([$event_id]);
             $current_tag_ids = $stmt_tags->fetchAll(PDO::FETCH_COLUMN);
-
-        } catch (Exception $e) {
-            $pdo->rollBack();
-            $errors[] = "Database Error: " . $e->getMessage();
         }
     }
 }
@@ -483,10 +487,22 @@ if ($event['asset_id'] > 0) {
                     <div class="form-group" style="background:#2a2a2a; padding:10px; border:1px solid #444; border-radius:4px;">
                          <label style="font-weight:bold;">Series Management</label>
                          <div style="margin-top:5px; display:flex; align-items:center; gap:10px;">
-                             <label for="end_series_date">End Series On:</label>
-                             <input type="date" name="end_series_date" id="end_series_date" placeholder="Select date to end series">
-                             <small style="color:#aaa;">(Leave empty to keep current schedule)</small>
+                             <label>End Series:</label>
+                             <input type="date" name="end_series_date" id="end_series_date">
+                             <label><input type="checkbox" id="series_forever" onchange="toggleSeriesForever()"> Forever</label>
                          </div>
+                         <script>
+                            function toggleSeriesForever() {
+                                const chk = document.getElementById('series_forever');
+                                const date = document.getElementById('end_series_date');
+                                if (chk.checked) {
+                                    date.value = '';
+                                    date.disabled = true;
+                                } else {
+                                    date.disabled = false;
+                                }
+                            }
+                         </script>
                     </div>
                 <?php endif; ?>
         <div class="card">
@@ -598,15 +614,7 @@ if ($event['asset_id'] > 0) {
                 <form action="edit_event.php?id=<?php echo $event_id; ?>" method="POST"
                     onsubmit="return confirm('Delete this event?');" style="flex:1;">
                     <input type="hidden" name="action" value="delete_event">
-                    <?php if ($is_series): ?>
-                        <div style="margin-bottom:5px;">
-                            <label style="margin-right:10px;"><input type="radio" name="update_scope" value="only_this"
-                                    checked> Only This</label>
-                            <label style="margin-right:10px;"><input type="radio" name="update_scope" value="future">
-                                Future</label>
-                            <label><input type="radio" name="update_scope" value="all"> All</label>
-                        </div>
-                    <?php endif; ?>
+
                     <button type="submit" class="btn-delete" style="width:100%;">Delete Event</button>
                 </form>
             </div>
