@@ -17,7 +17,8 @@ if ($is_admin || $is_full_user) {
     $stmt->execute([$user_id]);
     $allowed_tag_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
 }
-if (empty($allowed_tag_ids) && $is_tag_editor) $allowed_tag_ids = [0];
+if (empty($allowed_tag_ids) && $is_tag_editor)
+    $allowed_tag_ids = [0];
 
 $errors = [];
 $success_message = '';
@@ -28,12 +29,13 @@ if ($is_admin && isset($_POST['action']) && $_POST['action'] == 'scan_index') {
     if (!is_dir($upload_dir)) {
         mkdir($upload_dir, 0755, true);
     }
-    
+
     if (is_dir($upload_dir)) {
         $files = scandir($upload_dir);
         $count_added = 0;
         foreach ($files as $file) {
-            if ($file === '.' || $file === '..') continue;
+            if ($file === '.' || $file === '..')
+                continue;
             $filepath = $upload_dir . $file;
             if (is_file($filepath)) {
                 $md5 = md5_file($filepath);
@@ -48,7 +50,7 @@ if ($is_admin && isset($_POST['action']) && $_POST['action'] == 'scan_index') {
                     // Format: asset_UNIQUEID_ORIGINAL
                     $parts = explode('_', $file, 3);
                     $original_name = count($parts) >= 3 ? $parts[2] : $file;
-                    
+
                     $stmt_ins = $pdo->prepare("INSERT INTO assets (filename_disk, filename_original, mime_type, md5_hash, uploaded_by, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
                     $stmt_ins->execute([$file, $original_name, $mime_type, $md5, $user_id, $size]);
                     $count_added++;
@@ -63,10 +65,18 @@ if ($is_admin && isset($_POST['action']) && $_POST['action'] == 'scan_index') {
 
 // Handle Upload
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'upload_asset') {
-    $tag_id = (int)$_POST['tag_id'];
-    
-    if (!in_array($tag_id, $allowed_tag_ids)) {
-        $errors[] = "You do not have permission to upload assets for this tag.";
+    $selected_tag_ids = $_POST['tag_ids'] ?? [];
+
+    $valid_tags = true;
+    foreach ($selected_tag_ids as $tid) {
+        if (!in_array($tid, $allowed_tag_ids)) {
+            $valid_tags = false;
+            break;
+        }
+    }
+
+    if (!$valid_tags) {
+        $errors[] = "You do not have permission to upload assets for one or more selected tags.";
     } elseif (!isset($_FILES['asset']) || $_FILES['asset']['error'] != UPLOAD_ERR_OK) {
         $errors[] = "File upload failed.";
     } else {
@@ -74,39 +84,53 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
         $tmp_name = $asset['tmp_name'];
         $md5 = md5_file($tmp_name);
         $size_bytes = $asset['size'];
-        
+
         $stmt_check = $pdo->prepare("SELECT id FROM assets WHERE md5_hash = ?");
         $stmt_check->execute([$md5]);
         if ($stmt_check->fetch()) {
             $errors[] = "This file has already been uploaded.";
         } else {
             // Check Storage Quota (MB)
-            $stmt_limit = $pdo->prepare("SELECT storage_limit_mb FROM tags WHERE id = ?");
-            $stmt_limit->execute([$tag_id]);
-            $limit_mb = $stmt_limit->fetchColumn();
-            
-            // Calculate current usage
-            $stmt_usage = $pdo->prepare("SELECT SUM(size_bytes) FROM assets WHERE tag_id = ?");
-            $stmt_usage->execute([$tag_id]);
-            $current_bytes = $stmt_usage->fetchColumn();
-            $current_mb = $current_bytes / (1024 * 1024);
-            
-            $new_file_mb = $size_bytes / (1024 * 1024);
-            
-            if ($limit_mb > 0 && ($current_mb + $new_file_mb) > $limit_mb) {
-                $errors[] = "Storage limit reached for this tag (Limit: {$limit_mb} MB). Current usage: " . round($current_mb, 2) . " MB.";
-            } else {
+            foreach ($selected_tag_ids as $tid) {
+                $stmt_limit = $pdo->prepare("SELECT storage_limit_mb FROM tags WHERE id = ?");
+                $stmt_limit->execute([$tid]);
+                $limit_mb = $stmt_limit->fetchColumn();
+
+                // Calculate current usage
+                $stmt_usage = $pdo->prepare("SELECT SUM(size_bytes) FROM assets a JOIN asset_tags at ON a.id = at.asset_id WHERE at.tag_id = ?");
+                $stmt_usage->execute([$tid]);
+                $current_bytes = $stmt_usage->fetchColumn();
+                $current_mb = $current_bytes / (1024 * 1024);
+
+                $new_file_mb = $size_bytes / (1024 * 1024);
+
+                if ($limit_mb > 0 && ($current_mb + $new_file_mb) > $limit_mb) {
+                    $errors[] = "Storage limit reached for tag ID $tid (Limit: {$limit_mb} MB). Current usage: " . round($current_mb, 2) . " MB.";
+                    break;
+                }
+            }
+
+            if (empty($errors)) {
                 $original_filename = basename($asset['name']);
                 $mime_type = $asset['type'];
                 $safe_filename = uniqid('asset_', true) . '_' . preg_replace("/[^a-zA-Z0-9\._-]/", "", $original_filename);
                 $upload_dir = '/uploads/';
-                if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
-                
+                if (!is_dir($upload_dir))
+                    mkdir($upload_dir, 0755, true);
+
                 $upload_path = $upload_dir . $safe_filename;
-                
+
                 if (move_uploaded_file($tmp_name, $upload_path)) {
-                    $stmt_ins = $pdo->prepare("INSERT INTO assets (filename_disk, filename_original, mime_type, md5_hash, tag_id, uploaded_by, size_bytes) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                    $stmt_ins->execute([$safe_filename, $original_filename, $mime_type, $md5, $tag_id, $user_id, $size_bytes]);
+                    $stmt_ins = $pdo->prepare("INSERT INTO assets (filename_disk, filename_original, mime_type, md5_hash, uploaded_by, size_bytes) VALUES (?, ?, ?, ?, ?, ?)");
+                    $stmt_ins->execute([$safe_filename, $original_filename, $mime_type, $md5, $user_id, $size_bytes]);
+                    $asset_id = $pdo->lastInsertId();
+
+                    // Link tags
+                    $stmt_at = $pdo->prepare("INSERT INTO asset_tags (asset_id, tag_id) VALUES (?, ?)");
+                    foreach ($selected_tag_ids as $tid) {
+                        $stmt_at->execute([$asset_id, $tid]);
+                    }
+
                     $success_message = "Asset uploaded successfully.";
                 } else {
                     $errors[] = "Failed to move uploaded file.";
@@ -118,18 +142,28 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
 
 // Handle Delete
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'delete_asset') {
-    $asset_id = (int)$_POST['asset_id'];
+    $asset_id = (int) $_POST['asset_id'];
     $stmt_get = $pdo->prepare("SELECT * FROM assets WHERE id = ?");
     $stmt_get->execute([$asset_id]);
     $asset_to_del = $stmt_get->fetch(PDO::FETCH_ASSOC);
-    
-    // Allow delete if user has permission for the tag OR if tag is NULL (orphaned/indexed) and user is admin
+
+    // Allow delete if user has permission for ANY of the asset's tags OR if asset has NO tags and user is admin
     $can_delete = false;
     if ($asset_to_del) {
-        if ($asset_to_del['tag_id'] && in_array($asset_to_del['tag_id'], $allowed_tag_ids)) {
-            $can_delete = true;
-        } elseif (is_null($asset_to_del['tag_id']) && $is_admin) {
-            $can_delete = true;
+        $stmt_tags = $pdo->prepare("SELECT tag_id FROM asset_tags WHERE asset_id = ?");
+        $stmt_tags->execute([$asset_id]);
+        $asset_tags = $stmt_tags->fetchAll(PDO::FETCH_COLUMN);
+
+        if (empty($asset_tags)) {
+            if ($is_admin)
+                $can_delete = true;
+        } else {
+            foreach ($asset_tags as $tid) {
+                if (in_array($tid, $allowed_tag_ids)) {
+                    $can_delete = true;
+                    break;
+                }
+            }
         }
     }
 
@@ -140,7 +174,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
         $stmt_def = $pdo->prepare("SELECT t.tag_name FROM default_assets da JOIN tags t ON da.tag_id = t.id WHERE da.asset_id = ?");
         $stmt_def->execute([$asset_id]);
         $def_tags = $stmt_def->fetchAll(PDO::FETCH_COLUMN);
-        
+
         if (!empty($def_tags)) {
             foreach ($def_tags as $tag_name) {
                 $blocking_reasons[] = "Set as default asset for tag: " . htmlspecialchars($tag_name);
@@ -162,15 +196,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                 $blocking_reasons[] = "Used in event: " . htmlspecialchars($ev['event_name']) . " (" . $start_local . ")";
             }
         }
-        
+
         if (!empty($blocking_reasons)) {
             $errors[] = "Cannot delete asset. It is currently in use by the following:<br><ul><li>" . implode("</li><li>", $blocking_reasons) . "</li></ul>";
         } else {
             // Set asset_id to NULL for past events to satisfy FK constraint
             $pdo->prepare("UPDATE events SET asset_id = NULL WHERE asset_id = ?")->execute([$asset_id]);
-            
+
             $file_path = '/uploads/' . $asset_to_del['filename_disk'];
-            if (file_exists($file_path)) unlink($file_path);
+            if (file_exists($file_path))
+                unlink($file_path);
             $pdo->prepare("DELETE FROM assets WHERE id = ?")->execute([$asset_id]);
             $success_message = "Asset deleted.";
         }
@@ -181,27 +216,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
 
 // Fetch Assets
 // Filter Logic
-$filter_tag_id = isset($_GET['filter_tag']) && $_GET['filter_tag'] !== '' ? (int)$_GET['filter_tag'] : null;
+$filter_tag_id = isset($_GET['filter_tag']) && $_GET['filter_tag'] !== '' ? (int) $_GET['filter_tag'] : null;
 
 // Fetch Assets
 $in_clause = implode(',', array_fill(0, count($allowed_tag_ids), '?'));
 $params = $allowed_tag_ids;
 
 $sql_assets = "
-    SELECT a.*, t.tag_name, u.username 
+    SELECT DISTINCT a.*, u.username 
     FROM assets a 
-    LEFT JOIN tags t ON a.tag_id = t.id 
+    LEFT JOIN asset_tags at ON a.id = at.asset_id
     LEFT JOIN users u ON a.uploaded_by = u.id 
-    WHERE (a.tag_id IN ($in_clause)";
+    WHERE (at.tag_id IN ($in_clause)";
 
 if ($is_admin) {
-    $sql_assets .= " OR a.tag_id IS NULL";
+    $sql_assets .= " OR at.tag_id IS NULL";
 }
 $sql_assets .= ")";
 
 if ($filter_tag_id) {
     if (in_array($filter_tag_id, $allowed_tag_ids)) {
-        $sql_assets .= " AND a.tag_id = ?";
+        $sql_assets .= " AND at.tag_id = ?";
         $params[] = $filter_tag_id;
     }
 }
@@ -219,23 +254,27 @@ $stmt_tags->execute($allowed_tag_ids);
 $available_tags = $stmt_tags->fetchAll(PDO::FETCH_ASSOC);
 
 $total_space = 0;
-foreach ($assets as $a) $total_space += $a['size_bytes'];
-function formatBytes($bytes, $precision = 2) { 
-    $units = array('B', 'KB', 'MB', 'GB', 'TB'); 
-    $bytes = max($bytes, 0); 
-    $pow = floor(($bytes ? log($bytes) : 0) / log(1024)); 
-    $pow = min($pow, count($units) - 1); 
-    $bytes /= pow(1024, $pow); 
-    return round($bytes, $precision) . ' ' . $units[$pow]; 
+foreach ($assets as $a)
+    $total_space += $a['size_bytes'];
+function formatBytes($bytes, $precision = 2)
+{
+    $units = array('B', 'KB', 'MB', 'GB', 'TB');
+    $bytes = max($bytes, 0);
+    $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+    $pow = min($pow, count($units) - 1);
+    $bytes /= pow(1024, $pow);
+    return round($bytes, $precision) . ' ' . $units[$pow];
 }
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <title>Manage Assets - WRHU Encoder Scheduler</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
     <?php include 'navbar.php'; ?>
@@ -244,7 +283,10 @@ function formatBytes($bytes, $precision = 2) {
         <h1>Manage Assets</h1>
 
         <?php if (!empty($errors)): ?>
-            <div class="message error"><ul><?php foreach ($errors as $e) echo "<li>$e</li>"; ?></ul></div>
+            <div class="message error">
+                <ul><?php foreach ($errors as $e)
+                    echo "<li>$e</li>"; ?></ul>
+            </div>
         <?php endif; ?>
         <?php if ($success_message): ?>
             <div class="message success"><?php echo $success_message; ?></div>
@@ -252,11 +294,13 @@ function formatBytes($bytes, $precision = 2) {
 
         <div class="stats" style="display: flex; gap: 20px; margin-bottom: 2em;">
             <div class="card" style="flex: 1; text-align: center; margin-bottom:0;">
-                <div style="font-size: 2em; font-weight: bold; color: var(--secondary-color);"><?php echo count($assets); ?></div>
+                <div style="font-size: 2em; font-weight: bold; color: var(--secondary-color);">
+                    <?php echo count($assets); ?></div>
                 <div>Total Assets</div>
             </div>
             <div class="card" style="flex: 1; text-align: center; margin-bottom:0;">
-                <div style="font-size: 2em; font-weight: bold; color: var(--secondary-color);"><?php echo formatBytes($total_space); ?></div>
+                <div style="font-size: 2em; font-weight: bold; color: var(--secondary-color);">
+                    <?php echo formatBytes($total_space); ?></div>
                 <div>Total Space Used</div>
             </div>
         </div>
@@ -266,11 +310,11 @@ function formatBytes($bytes, $precision = 2) {
             <form method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="action" value="upload_asset">
                 <div class="form-group">
-                    <label>Select Tag to Associate</label>
-                    <select name="tag_id" required>
-                        <option value="">-- Select Tag --</option>
+                    <label>Select Tags to Associate (Hold Ctrl/Cmd to select multiple)</label>
+                    <select name="tag_ids[]" multiple required style="height: 100px;">
                         <?php foreach ($available_tags as $tag): ?>
-                            <option value="<?php echo $tag['id']; ?>"><?php echo htmlspecialchars($tag['tag_name']); ?></option>
+                            <option value="<?php echo $tag['id']; ?>"><?php echo htmlspecialchars($tag['tag_name']); ?>
+                            </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -283,14 +327,14 @@ function formatBytes($bytes, $precision = 2) {
         </div>
 
         <?php if ($is_admin): ?>
-        <div class="card">
-            <h2>Admin Tools</h2>
-            <form method="POST" onsubmit="return confirm('Scan uploads folder for missing assets?');">
-                <input type="hidden" name="action" value="scan_index">
-                <p>Scan the <code>/uploads</code> directory for files not in the database and index them.</p>
-                <button type="submit" class="btn-secondary">Scan & Index Missing Assets</button>
-            </form>
-        </div>
+            <div class="card">
+                <h2>Admin Tools</h2>
+                <form method="POST" onsubmit="return confirm('Scan uploads folder for missing assets?');">
+                    <input type="hidden" name="action" value="scan_index">
+                    <p>Scan the <code>/uploads</code> directory for files not in the database and index them.</p>
+                    <button type="submit" class="btn-secondary">Scan & Index Missing Assets</button>
+                </form>
+            </div>
         <?php endif; ?>
 
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -299,7 +343,8 @@ function formatBytes($bytes, $precision = 2) {
                 <select name="filter_tag" onchange="this.form.submit()" style="padding:5px;">
                     <option value="">All Tags</option>
                     <?php foreach ($available_tags as $tag): ?>
-                        <option value="<?php echo $tag['id']; ?>" <?php if($filter_tag_id == $tag['id']) echo 'selected'; ?>>
+                        <option value="<?php echo $tag['id']; ?>" <?php if ($filter_tag_id == $tag['id'])
+                               echo 'selected'; ?>>
                             <?php echo htmlspecialchars($tag['tag_name']); ?>
                         </option>
                     <?php endforeach; ?>
@@ -309,13 +354,14 @@ function formatBytes($bytes, $precision = 2) {
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
             <?php foreach ($assets as $asset): ?>
                 <div class="card" style="padding: 1em; margin-bottom: 0;">
-                    <?php 
-                        $file_url = 'serve_asset.php?id=' . $asset['id'];
-                        $is_image = strpos($asset['mime_type'], 'image') !== false;
-                        $is_video = strpos($asset['mime_type'], 'video') !== false;
+                    <?php
+                    $file_url = 'serve_asset.php?id=' . $asset['id'];
+                    $is_image = strpos($asset['mime_type'], 'image') !== false;
+                    $is_video = strpos($asset['mime_type'], 'video') !== false;
                     ?>
-                    
-                    <div style="aspect-ratio: 16/9; width: 100%; background: #000; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; overflow: hidden; border-radius: 4px;">
+
+                    <div
+                        style="aspect-ratio: 16/9; width: 100%; background: #000; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; overflow: hidden; border-radius: 4px;">
                         <?php if ($is_image): ?>
                             <img src="<?php echo $file_url; ?>" style="width: 100%; height: 100%; object-fit: cover;">
                         <?php elseif ($is_video): ?>
@@ -325,13 +371,21 @@ function formatBytes($bytes, $precision = 2) {
                         <?php endif; ?>
                     </div>
 
-                    <div style="font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px;" title="<?php echo htmlspecialchars($asset['filename_original']); ?>">
+                    <div style="font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px;"
+                        title="<?php echo htmlspecialchars($asset['filename_original']); ?>">
                         <?php echo htmlspecialchars($asset['filename_original']); ?>
                     </div>
-                    
+
                     <div style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">
                         Size: <?php echo formatBytes($asset['size_bytes']); ?><br>
-                        Tag: <?php echo $asset['tag_name'] ? htmlspecialchars($asset['tag_name']) : 'None'; ?><br>
+                        <?php
+                        // Fetch tags for this asset
+                        $stmt_at = $pdo->prepare("SELECT t.tag_name FROM asset_tags at JOIN tags t ON at.tag_id = t.id WHERE at.asset_id = ?");
+                        $stmt_at->execute([$asset['id']]);
+                        $at_names = $stmt_at->fetchAll(PDO::FETCH_COLUMN);
+                        $tag_display = empty($at_names) ? 'None' : implode(', ', $at_names);
+                        ?>
+                        Tags: <?php echo htmlspecialchars($tag_display); ?><br>
                         By: <?php echo htmlspecialchars($asset['username'] ?? 'System'); ?><br>
                         Date: <?php echo date('M j, Y', strtotime($asset['created_at'])); ?>
                     </div>
@@ -350,8 +404,10 @@ function formatBytes($bytes, $precision = 2) {
     </div>
 
     <footer>
-        &copy;<?php echo date("Y") > 2025 ? "2025-" . date("Y") : "2025"; ?> WRHU Radio Hofstra University. Written by Gregory Pocali for WRHU with assistance from Google Gemini 3.
+        &copy;<?php echo date("Y") > 2025 ? "2025-" . date("Y") : "2025"; ?> WRHU Radio Hofstra University. Written by
+        Gregory Pocali for WRHU with assistance from Google Gemini 3.
     </footer>
 
 </body>
+
 </html>

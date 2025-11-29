@@ -1,21 +1,23 @@
 <?php
-require_once 'auth.php'; 
+require_once 'auth.php';
 require_once '../db_connect.php';
 
 $start_date = $_GET['start'];
 $end_date = $_GET['end'];
 
 $sql = "
-    SELECT 
+    SELECT DISTINCT
         e.id, 
         e.event_name, 
         e.start_time, 
         e.end_time, 
-        t.tag_name 
+        GROUP_CONCAT(t.tag_name SEPARATOR ', ') as tag_names
     FROM events e
-    JOIN tags t ON e.tag_id = t.id
+    JOIN event_tags et ON e.id = et.event_id
+    JOIN tags t ON et.tag_id = t.id
     WHERE 
         e.start_time <= ? AND e.end_time >= ?
+    GROUP BY e.id
 ";
 
 try {
@@ -26,10 +28,10 @@ try {
     $events_json = [];
     foreach ($results as $row) {
         $events_json[] = [
-            'id'    => $row['id'],
-            'title' => "({$row['tag_name']}) " . $row['event_name'],
-            'start' => $row['start_time'], 
-            'end'   => $row['end_time']
+            'id' => $row['id'],
+            'title' => "({$row['tag_names']}) " . $row['event_name'],
+            'start' => $row['start_time'],
+            'end' => $row['end_time']
         ];
     }
 

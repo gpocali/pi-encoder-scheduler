@@ -19,9 +19,43 @@ if (!$event) {
     die("Event not found.");
 }
 
-// Check Permission
-if (!can_edit_tag($pdo, $event['tag_id'])) {
-    die("You do not have permission to edit events for this tag.");
+// Fetch Current Tags
+$stmt_tags = $pdo->prepare("SELECT tag_id FROM event_tags WHERE event_id = ?");
+$stmt_tags->execute([$event_id]);
+$current_tag_ids = $stmt_tags->fetchAll(PDO::FETCH_COLUMN);
+
+// Fallback for legacy
+if (empty($current_tag_ids) && $event['tag_id']) {
+    $current_tag_ids[] = $event['tag_id'];
+}
+
+// Check Permission (Must have permission for ALL tags? Or ANY? Let's say ANY for now to allow editing, but maybe restrict adding tags user doesn't own)
+// Better: User must have permission for at least one of the event's tags to edit it.
+$has_permission = false;
+$user_id = $_SESSION['user_id'];
+$allowed_tag_ids = [];
+
+if (is_admin() || has_role('user')) {
+    $stmt = $pdo->query("SELECT id, tag_name FROM tags ORDER BY tag_name");
+    $tags = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $allowed_tag_ids = array_column($tags, 'id');
+    $has_permission = true;
+} else {
+    $stmt = $pdo->prepare("SELECT t.id, t.tag_name FROM tags t JOIN user_tags ut ON t.id = ut.tag_id WHERE ut.user_id = ? ORDER BY t.tag_name");
+    $stmt->execute([$user_id]);
+    $tags = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $allowed_tag_ids = array_column($tags, 'id');
+
+    foreach ($current_tag_ids as $tid) {
+        if (in_array($tid, $allowed_tag_ids)) {
+            $has_permission = true;
+            break;
+        }
+    }
+}
+
+if (!$has_permission) {
+    die("You do not have permission to edit events for these tags.");
 }
 
 // Check if Series
@@ -51,9 +85,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
     $priority = (int) $_POST['priority'];
     $asset_selection_mode = $_POST['asset_mode'];
     $update_scope = $_POST['update_scope'] ?? 'only_this';
+    $selected_tag_ids = $_POST['tag_ids'] ?? [];
 
     if (empty($event_name))
         $errors[] = "Event name is required.";
+    if (empty($selected_tag_ids))
+        $errors[] = "At least one tag is required.";
+    foreach ($selected_tag_ids as $tid) {
+        if (!in_array($tid, $allowed_tag_ids)) {
+            $errors[] = "Invalid tag selected: $tid";
+            break;
+        }
+    }
 
     $start_dt = new DateTime("$start_date $start_time_val");
     $end_dt = new DateTime("$start_date $end_time_val");
@@ -75,9 +118,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                 $safe_filename = uniqid('asset_', true) . '_' . preg_replace("/[^a-zA-Z0-9\._-]/", "", basename($asset['name']));
                 $upload_path = '/uploads/' . $safe_filename;
                 move_uploaded_file($tmp_name, $upload_path);
-                $stmt_ins = $pdo->prepare("INSERT INTO assets (filename_disk, filename_original, mime_type, md5_hash, tag_id, uploaded_by, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
-                $stmt_ins->execute([$safe_filename, basename($asset['name']), $asset['type'], $md5, $event['tag_id'], $_SESSION['user_id'], $asset['size']]);
+                $stmt_ins = $pdo->prepare("INSERT INTO assets (filename_disk, filename_original, mime_type, md5_hash, uploaded_by, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
+                $stmt_ins->execute([$safe_filename, basename($asset['name']), $asset['type'], $md5, $_SESSION['user_id'], $asset['size']]);
                 $asset_id = $pdo->lastInsertId();
+
+                // Link tags (use event tags)
+                $stmt_at = $pdo->prepare("INSERT INTO asset_tags (asset_id, tag_id) VALUES (?, ?)");
+                foreach ($selected_tag_ids as $tid) {
+                    $stmt_at->execute([$asset_id, $tid]);
+                }
             }
         }
     } elseif ($asset_selection_mode == 'existing') {
@@ -134,6 +183,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                             WHERE id = ?";
                 $stmt_upd = $pdo->prepare($sql_upd);
                 $stmt_upd->execute([$event_name, $asset_id, $priority, $delta_start, $delta_end, $tid]);
+
+                // Update Tags for each target
+                $pdo->prepare("DELETE FROM event_tags WHERE event_id = ?")->execute([$tid]);
+                $stmt_et = $pdo->prepare("INSERT INTO event_tags (event_id, tag_id) VALUES (?, ?)");
+                foreach ($selected_tag_ids as $tag_id) {
+                    $stmt_et->execute([$tid, $tag_id]);
+                }
             }
 
             $pdo->commit();
@@ -142,6 +198,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
             // Refresh event data
             $stmt->execute([$event_id]);
             $event = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            // Refresh tags
+            $stmt_tags->execute([$event_id]);
+            $current_tag_ids = $stmt_tags->fetchAll(PDO::FETCH_COLUMN);
 
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -262,79 +322,91 @@ $all_assets = $pdo->query($sql_assets)->fetchAll(PDO::FETCH_ASSOC);
                 <div class="row">
                     <div class="col">
                         <div class="form-group">
-                            <label>Start Date</label>
-                            <input type="date" name="start_date" value="<?php echo $current_date; ?>" required>
+                            <label>Output Tags (Hold Ctrl/Cmd to select multiple)</label>
+                            <select name="tag_ids[]" multiple required style="height: 100px;">
+                                <?php foreach ($tags as $tag): ?>
+                                    <option value="<?php echo $tag['id']; ?>" <?php if (in_array($tag['id'], $current_tag_ids))
+                                           echo 'selected'; ?>>
+                                        <?php echo htmlspecialchars($tag['tag_name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                     </div>
-                    <div class="col">
-                        <div class="form-group">
-                            <label>Start Time</label>
-                            <input type="time" name="start_time" value="<?php echo $current_start_time; ?>" required>
-                        </div>
+                    <div class="form-group">
+                        <label>Start Date</label>
+                        <input type="date" name="start_date" value="<?php echo $current_date; ?>" required>
                     </div>
                 </div>
-
-                <div class="form-group">
-                    <label>End Time</label>
-                    <input type="time" name="end_time" value="<?php echo $current_end_time; ?>" required>
+                <div class="col">
+                    <div class="form-group">
+                        <label>Start Time</label>
+                        <input type="time" name="start_time" value="<?php echo $current_start_time; ?>" required>
+                    </div>
                 </div>
+        </div>
 
-                <div class="form-group">
-                    <label>Priority</label>
-                    <select name="priority">
-                        <option value="0" <?php if ($event['priority'] == 0)
-                            echo 'selected'; ?>>Low (Default)</option>
-                        <option value="1" <?php if ($event['priority'] == 1)
-                            echo 'selected'; ?>>Medium</option>
-                        <option value="2" <?php if ($event['priority'] == 2)
-                            echo 'selected'; ?>>High (Preempts others)
+        <div class="form-group">
+            <label>End Time</label>
+            <input type="time" name="end_time" value="<?php echo $current_end_time; ?>" required>
+        </div>
+
+        <div class="form-group">
+            <label>Priority</label>
+            <select name="priority">
+                <option value="0" <?php if ($event['priority'] == 0)
+                    echo 'selected'; ?>>Low (Default)</option>
+                <option value="1" <?php if ($event['priority'] == 1)
+                    echo 'selected'; ?>>Medium</option>
+                <option value="2" <?php if ($event['priority'] == 2)
+                    echo 'selected'; ?>>High (Preempts others)
+                </option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Asset Selection</label>
+            <div style="margin-bottom:10px;">
+                <label style="display:inline; margin-right:15px;">
+                    <input type="radio" name="asset_mode" value="existing" checked onclick="toggleAssetMode()"
+                        style="width:auto;"> Use Existing Asset
+                </label>
+                <label style="display:inline;">
+                    <input type="radio" name="asset_mode" value="upload" onclick="toggleAssetMode()"
+                        style="width:auto;"> Upload New
+                </label>
+            </div>
+
+            <div id="mode-existing">
+                <select name="existing_asset_id">
+                    <?php foreach ($all_assets as $a): ?>
+                        <option value="<?php echo $a['id']; ?>" <?php if ($a['id'] == $event['asset_id'])
+                               echo 'selected'; ?>>
+                            <?php echo htmlspecialchars($a['filename_original']); ?>
                         </option>
-                    </select>
-                </div>
+                    <?php endforeach; ?>
+                </select>
+            </div>
 
-                <div class="form-group">
-                    <label>Asset Selection</label>
-                    <div style="margin-bottom:10px;">
-                        <label style="display:inline; margin-right:15px;">
-                            <input type="radio" name="asset_mode" value="existing" checked onclick="toggleAssetMode()"
-                                style="width:auto;"> Use Existing Asset
-                        </label>
-                        <label style="display:inline;">
-                            <input type="radio" name="asset_mode" value="upload" onclick="toggleAssetMode()"
-                                style="width:auto;"> Upload New
-                        </label>
-                    </div>
-
-                    <div id="mode-existing">
-                        <select name="existing_asset_id">
-                            <?php foreach ($all_assets as $a): ?>
-                                <option value="<?php echo $a['id']; ?>" <?php if ($a['id'] == $event['asset_id'])
-                                       echo 'selected'; ?>>
-                                    <?php echo htmlspecialchars($a['filename_original']); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <div id="mode-upload" style="display:none;">
-                        <input type="file" name="asset">
-                    </div>
-                </div>
-
-                <button type="submit" class="btn">Update Event</button>
-            </form>
-
-            <div style="display:flex; gap:10px; margin-top:1em;">
-                <a href="create_event.php?duplicate_id=<?php echo $event_id; ?>" class="btn btn-secondary"
-                    style="text-align:center; flex:1;">Duplicate Event</a>
-
-                <form action="edit_event.php?id=<?php echo $event_id; ?>" method="POST"
-                    onsubmit="return confirm('Delete this event?');" style="flex:1;">
-                    <input type="hidden" name="action" value="delete_event">
-                    <button type="submit" class="btn-delete" style="width:100%;">Delete Event</button>
-                </form>
+            <div id="mode-upload" style="display:none;">
+                <input type="file" name="asset">
             </div>
         </div>
+
+        <button type="submit" class="btn">Update Event</button>
+        </form>
+
+        <div style="display:flex; gap:10px; margin-top:1em;">
+            <a href="create_event.php?duplicate_id=<?php echo $event_id; ?>" class="btn btn-secondary"
+                style="text-align:center; flex:1;">Duplicate Event</a>
+
+            <form action="edit_event.php?id=<?php echo $event_id; ?>" method="POST"
+                onsubmit="return confirm('Delete this event?');" style="flex:1;">
+                <input type="hidden" name="action" value="delete_event">
+                <button type="submit" class="btn-delete" style="width:100%;">Delete Event</button>
+            </form>
+        </div>
+    </div>
     </div>
 
     <footer>

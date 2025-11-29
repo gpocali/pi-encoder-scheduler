@@ -43,10 +43,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
     if (isset($_POST['action']) && $_POST['action'] == 'delete_event') {
         $event_id = (int) $_POST['event_id'];
-        $stmt = $pdo->prepare("SELECT tag_id FROM events WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT tag_id FROM event_tags WHERE event_id = ?");
         $stmt->execute([$event_id]);
-        $evt_tag = $stmt->fetchColumn();
-        if (in_array($evt_tag, $allowed_tag_ids)) {
+        $evt_tags = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        $has_perm = false;
+        foreach ($evt_tags as $tid) {
+            if (in_array($tid, $allowed_tag_ids)) {
+                $has_perm = true;
+                break;
+            }
+        }
+
+        if ($has_perm) {
             $pdo->prepare("DELETE FROM events WHERE id = ?")->execute([$event_id]);
             header("Location: index.php");
             exit;
@@ -62,8 +71,9 @@ foreach ($tags as $tag) {
     // Find highest priority active event
     $sql_live = "SELECT e.*, a.filename_disk, a.filename_original, a.mime_type 
                  FROM events e 
+                 JOIN event_tags et ON e.id = et.event_id
                  JOIN assets a ON e.asset_id = a.id 
-                 WHERE e.tag_id = ? 
+                 WHERE et.tag_id = ? 
                  AND e.start_time <= ? AND e.end_time > ? 
                  ORDER BY e.priority DESC, e.start_time ASC LIMIT 1";
     $stmt_live = $pdo->prepare($sql_live);
@@ -108,12 +118,13 @@ $params = [];
 
 // Permission Filter
 $in_clause = implode(',', array_fill(0, count($allowed_tag_ids), '?'));
-$where_clauses[] = "e.tag_id IN ($in_clause)";
+// Query needs to join event_tags to filter
+$where_clauses[] = "et.tag_id IN ($in_clause)";
 $params = array_merge($params, $allowed_tag_ids);
 
 // User Filters
 if ($filter_tag) {
-    $where_clauses[] = "e.tag_id = ?";
+    $where_clauses[] = "et.tag_id = ?";
     $params[] = $filter_tag;
 }
 
@@ -132,16 +143,16 @@ if ($view == 'list') {
     // Let's show all by default, sorted by start_time DESC
 
     // Count for pagination
-    $sql_count = "SELECT COUNT(*) FROM events e WHERE " . implode(" AND ", $where_clauses);
+    $sql_count = "SELECT COUNT(DISTINCT e.id) FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses);
     $stmt_count = $pdo->prepare($sql_count);
     $stmt_count->execute($params);
     $total_items = $stmt_count->fetchColumn();
     $total_pages = ceil($total_items / $per_page);
     $offset = ($page - 1) * $per_page;
 
-    $sql = "SELECT e.*, t.tag_name, a.filename_original 
+    $sql = "SELECT DISTINCT e.*, a.filename_original 
             FROM events e 
-            JOIN tags t ON e.tag_id = t.id 
+            JOIN event_tags et ON e.id = et.event_id
             JOIN assets a ON e.asset_id = a.id 
             WHERE " . implode(" AND ", $where_clauses) . " 
             ORDER BY e.start_time DESC 
@@ -206,7 +217,7 @@ if ($view == 'list') {
     $params[] = $start_utc;
     $params[] = $end_utc;
 
-    $sql = "SELECT e.*, t.tag_name, a.filename_original FROM events e JOIN tags t ON e.tag_id = t.id JOIN assets a ON e.asset_id = a.id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
+    $sql = "SELECT DISTINCT e.*, a.filename_original FROM events e JOIN event_tags et ON e.id = et.event_id JOIN assets a ON e.asset_id = a.id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -321,17 +332,13 @@ if ($view == 'list') {
 
         <!-- View Tabs -->
         <div class="view-tabs">
-            <a href="<?php echo urlWithParam('view', 'list'); ?>"
-                class="view-tab <?php if ($view == 'list')
+            <a href="<?php echo urlWithParam('view', 'list'); ?>" class="view-tab <?php if ($view == 'list')
                     echo 'active'; ?>">List</a>
-            <a href="<?php echo urlWithParam('view', 'day'); ?>"
-                class="view-tab <?php if ($view == 'day')
+            <a href="<?php echo urlWithParam('view', 'day'); ?>" class="view-tab <?php if ($view == 'day')
                     echo 'active'; ?>">Day</a>
-            <a href="<?php echo urlWithParam('view', 'week'); ?>"
-                class="view-tab <?php if ($view == 'week')
+            <a href="<?php echo urlWithParam('view', 'week'); ?>" class="view-tab <?php if ($view == 'week')
                     echo 'active'; ?>">Week</a>
-            <a href="<?php echo urlWithParam('view', 'month'); ?>"
-                class="view-tab <?php if ($view == 'month')
+            <a href="<?php echo urlWithParam('view', 'month'); ?>" class="view-tab <?php if ($view == 'month')
                     echo 'active'; ?>">Month</a>
         </div>
 
@@ -370,7 +377,14 @@ if ($view == 'list') {
                                     style="color:<?php echo $status_color; ?>; font-weight:bold;"><?php echo $status; ?></span>
                             </td>
                             <td><?php echo htmlspecialchars($ev['event_name']); ?></td>
-                            <td><?php echo htmlspecialchars($ev['tag_name']); ?></td>
+                            <td>
+                                <?php
+                                $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
+                                $stmt_t->execute([$ev['id']]);
+                                $tag_names = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
+                                echo htmlspecialchars(implode(', ', $tag_names));
+                                ?>
+                            </td>
                             <td><?php echo $start->setTimezone(new DateTimeZone('America/New_York'))->format('M j, g:i A'); ?>
                             </td>
                             <td><?php echo $end->setTimezone(new DateTimeZone('America/New_York'))->format('M j, g:i A'); ?>
@@ -404,8 +418,7 @@ if ($view == 'list') {
             <!-- Pagination -->
             <div class="pagination">
                 <?php for ($i = 1; $i <= $total_pages; $i++): ?>
-                    <a href="<?php echo urlWithParam('page', $i); ?>"
-                        class="page-link <?php if ($page == $i)
+                    <a href="<?php echo urlWithParam('page', $i); ?>" class="page-link <?php if ($page == $i)
                             echo 'active'; ?>"><?php echo $i; ?></a>
                 <?php endfor; ?>
             </div>
@@ -481,8 +494,16 @@ if ($view == 'list') {
                             <div>
                                 <div style="font-weight:bold; font-size:1.1em;"><?php echo $start . ' - ' . $end; ?></div>
                                 <div style="color:var(--accent-color);"><?php echo htmlspecialchars($ev['event_name']); ?></div>
-                                <div style="font-size:0.9em; color:#888;">Tag: <?php echo htmlspecialchars($ev['tag_name']); ?> |
-                                    Asset: <?php echo htmlspecialchars($ev['filename_original']); ?></div>
+                                <div style="font-size:0.9em; color:#888;">
+                                    Tags:
+                                    <?php
+                                    $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
+                                    $stmt_t->execute([$ev['id']]);
+                                    $tag_names = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
+                                    echo htmlspecialchars(implode(', ', $tag_names));
+                                    ?>
+                                    | Asset: <?php echo htmlspecialchars($ev['filename_original']); ?>
+                                </div>
                             </div>
                             <a href="edit_event.php?id=<?php echo $ev['id']; ?>" class="btn btn-sm btn-secondary">Edit</a>
                         </div>
