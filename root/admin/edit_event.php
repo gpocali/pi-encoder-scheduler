@@ -160,6 +160,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                 }
             }
 
+            // Handle End Series Date
+            if ($is_series && !empty($_POST['end_series_date'])) {
+                $end_series_date = $_POST['end_series_date'];
+                $end_dt = new DateTime($end_series_date);
+                $end_dt->setTime(23, 59, 59);
+                $cutoff_utc = $end_dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+
+                $stmt_del_future = $pdo->prepare("DELETE FROM events WHERE (parent_event_id = ? OR id = ?) AND start_time > ?");
+                $stmt_del_future->execute([$parent_id, $parent_id, $cutoff_utc]);
+            }
+
             $pdo->commit();
             $success_message = "Event(s) updated successfully.";
 
@@ -468,7 +479,16 @@ if ($event['asset_id'] > 0) {
         <?php if ($success_message): ?>
             <div class="message success"><?php echo $success_message; ?></div>
         <?php endif; ?>
-
+                <?php if ($is_series): ?>
+                    <div class="form-group" style="background:#2a2a2a; padding:10px; border:1px solid #444; border-radius:4px;">
+                         <label style="font-weight:bold;">Series Management</label>
+                         <div style="margin-top:5px; display:flex; align-items:center; gap:10px;">
+                             <label for="end_series_date">End Series On:</label>
+                             <input type="date" name="end_series_date" id="end_series_date" placeholder="Select date to end series">
+                             <small style="color:#aaa;">(Leave empty to keep current schedule)</small>
+                         </div>
+                    </div>
+                <?php endif; ?>
         <div class="card">
             <form action="edit_event.php?id=<?php echo $event_id; ?>" method="POST">
                 <input type="hidden" name="action" value="update_event">
@@ -555,16 +575,19 @@ if ($event['asset_id'] > 0) {
                     <div id="asset-warning" style="color:orange; display:none; margin-top:5px;"></div>
                 </div>
 
-                <div style="display:flex; gap:10px; align-items:center;">
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:nowrap;">
                     <?php if ($is_series): ?>
-                        <select name="update_scope"
-                            style="padding: 10px; background: #333; color: #fff; border: 1px solid #444; border-radius: 4px;">
-                            <option value="only_this">Only This Instance</option>
-                            <option value="future">This & Future</option>
-                            <option value="all">Entire Series</option>
-                        </select>
+                        <div style="display:flex; align-items:center; gap:5px; white-space:nowrap;">
+                            <label for="update_scope" style="margin:0;">Update Scope:</label>
+                            <select name="update_scope" id="update_scope"
+                                style="padding: 10px; background: #333; color: #fff; border: 1px solid #444; border-radius: 4px;">
+                                <option value="only_this">Only This Instance</option>
+                                <option value="future">This & Future</option>
+                                <option value="all">Entire Series</option>
+                            </select>
+                        </div>
                     <?php endif; ?>
-                    <button type="submit" class="btn" style="flex:1;">Update Event</button>
+                    <button type="submit" class="btn" style="flex:1; white-space:nowrap;">Update Event</button>
                 </div>
             </form>
 

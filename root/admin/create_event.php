@@ -26,6 +26,10 @@ $event_name = '';
 $selected_tag_ids = [];
 $priority = 0;
 $asset_id = 0;
+$recurrence = 'none';
+$recur_days = [];
+$recur_forever = false;
+$recur_until = '';
 
 // Handle Duplicate Request
 if (isset($_GET['duplicate_id'])) {
@@ -44,6 +48,51 @@ if (isset($_GET['duplicate_id'])) {
 
         $priority = $dup_event['priority'];
         $asset_id = $dup_event['asset_id'];
+
+        // Infer Recurrence
+        $recurrence = 'none';
+        $recur_days = [];
+        $recur_forever = false;
+        $recur_until = '';
+
+        $series_id = $dup_event['parent_event_id'] ?: ($dup_event['id']); // Assume I might be parent
+        // Check if I am really a parent or child of a series
+        $stmt_check = $pdo->prepare("SELECT COUNT(*) FROM events WHERE parent_event_id = ? OR id = ?");
+        $stmt_check->execute([$series_id, $series_id]);
+        if ($stmt_check->fetchColumn() > 1) {
+            // It is a series. Find next event to guess interval.
+            $stmt_next = $pdo->prepare("SELECT start_time FROM events WHERE (parent_event_id = ? OR id = ?) AND start_time > ? ORDER BY start_time ASC LIMIT 1");
+            $stmt_next->execute([$series_id, $series_id, $dup_event['start_time']]);
+            $next_start = $stmt_next->fetchColumn();
+
+            if ($next_start) {
+                $d1 = new DateTime($dup_event['start_time']);
+                $d2 = new DateTime($next_start);
+                $diff = $d1->diff($d2);
+
+                if ($diff->days == 1) {
+                    $recurrence = 'daily';
+                } elseif ($diff->days == 7) {
+                    $recurrence = 'weekly';
+                    $recur_days[] = $d1->format('w');
+                }
+            }
+
+            // Check end date
+            $stmt_last = $pdo->prepare("SELECT start_time FROM events WHERE (parent_event_id = ? OR id = ?) ORDER BY start_time DESC LIMIT 1");
+            $stmt_last->execute([$series_id, $series_id]);
+            $last_start = $stmt_last->fetchColumn();
+
+            if ($last_start) {
+                $last_dt = new DateTime($last_start);
+                $now = new DateTime();
+                if ($last_dt->diff($now)->y > 5) { // Arbitrary: if last event is > 5 years away (or just very far), assume forever
+                    $recur_forever = true;
+                } else {
+                    $recur_until = $last_dt->format('Y-m-d');
+                }
+            }
+        }
     }
 }
 
@@ -488,9 +537,12 @@ if ($asset_id > 0) {
                 <div class="form-group">
                     <label>Recurrence</label>
                     <select name="recurrence" id="recurrence" onchange="toggleRecurrence()">
-                        <option value="none">None (One-time)</option>
-                        <option value="daily">Daily</option>
-                        <option value="weekly">Weekly</option>
+                        <option value="none" <?php if ($recurrence == 'none')
+                            echo 'selected'; ?>>None (One-time)</option>
+                        <option value="daily" <?php if ($recurrence == 'daily')
+                            echo 'selected'; ?>>Daily</option>
+                        <option value="weekly" <?php if ($recurrence == 'weekly')
+                            echo 'selected'; ?>>Weekly</option>
                     </select>
                 </div>
 
@@ -499,25 +551,42 @@ if ($asset_id > 0) {
                     <div class="form-group">
                         <label>Repeat Until</label>
                         <div style="display:flex; align-items:center; gap:10px;">
-                            <input type="date" name="recur_until" id="recur_until">
+                            <input type="date" name="recur_until" id="recur_until" value="<?php echo $recur_until; ?>">
                             <label><input type="checkbox" name="recur_forever" id="recur_forever"
-                                    onchange="toggleRecurForever()"> Forever</label>
+                                    onchange="toggleRecurForever()" <?php if ($recur_forever)
+                                        echo 'checked'; ?>>
+                                Forever</label>
                         </div>
                     </div>
 
                     <div class="form-group" id="recur-days-group" style="display:none;">
                         <label>Repeat On (Weekly)</label>
                         <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                            <label><input type="checkbox" name="recur_days[]" value="0"> Sun</label>
-                            <label><input type="checkbox" name="recur_days[]" value="1"> Mon</label>
-                            <label><input type="checkbox" name="recur_days[]" value="2"> Tue</label>
-                            <label><input type="checkbox" name="recur_days[]" value="3"> Wed</label>
-                            <label><input type="checkbox" name="recur_days[]" value="4"> Thu</label>
-                            <label><input type="checkbox" name="recur_days[]" value="5"> Fri</label>
-                            <label><input type="checkbox" name="recur_days[]" value="6"> Sat</label>
+                            <label><input type="checkbox" name="recur_days[]" value="0" <?php if (in_array(0, $recur_days))
+                                echo 'checked'; ?>> Sun</label>
+                            <label><input type="checkbox" name="recur_days[]" value="1" <?php if (in_array(1, $recur_days))
+                                echo 'checked'; ?>> Mon</label>
+                            <label><input type="checkbox" name="recur_days[]" value="2" <?php if (in_array(2, $recur_days))
+                                echo 'checked'; ?>> Tue</label>
+                            <label><input type="checkbox" name="recur_days[]" value="3" <?php if (in_array(3, $recur_days))
+                                echo 'checked'; ?>> Wed</label>
+                            <label><input type="checkbox" name="recur_days[]" value="4" <?php if (in_array(4, $recur_days))
+                                echo 'checked'; ?>> Thu</label>
+                            <label><input type="checkbox" name="recur_days[]" value="5" <?php if (in_array(5, $recur_days))
+                                echo 'checked'; ?>> Fri</label>
+                            <label><input type="checkbox" name="recur_days[]" value="6" <?php if (in_array(6, $recur_days))
+                                echo 'checked'; ?>> Sat</label>
                         </div>
                     </div>
                 </div>
+
+                <script>
+                    // Trigger initial state
+                    document.addEventListener('DOMContentLoaded', function () {
+                        toggleRecurrence();
+                        toggleRecurForever();
+                    });
+                </script>
 
                 <div class="row">
                     <div class="col">
