@@ -101,13 +101,13 @@ if (!function_exists('formatBytes')) {
         </div>
 
         <?php if (!empty($errors)): ?>
-                <div class="message error">
-                    <ul><?php foreach ($errors as $e)
-                        echo "<li>$e</li>"; ?></ul>
-                </div>
+            <div class="message error">
+                <ul><?php foreach ($errors as $e)
+                    echo "<li>$e</li>"; ?></ul>
+            </div>
         <?php endif; ?>
         <?php if (isset($success_message) && $success_message): ?>
-                <div class="message success"><?php echo $success_message; ?></div>
+            <div class="message success"><?php echo $success_message; ?></div>
         <?php endif; ?>
 
         <div class="stats" style="display: flex; gap: 20px; margin-bottom: 2em;">
@@ -117,9 +117,10 @@ if (!function_exists('formatBytes')) {
                 </div>
                 <div>Total Assets</div>
             </div>
-            
+
             <div class="card" style="flex: 2; margin-bottom:0; padding: 1em; display: flex; flex-direction: column;">
-                <h3 style="margin-top:0; margin-bottom:10px; font-size:1.1em; text-align:center;">Storage Usage per Tag</h3>
+                <h3 style="margin-top:0; margin-bottom:10px; font-size:1.1em; text-align:center;">Storage Usage per Tag
+                </h3>
                 <div style="flex: 1; overflow-y: auto; max-height: 120px;">
                     <table style="width:100%; font-size:0.9em; border-collapse: collapse;">
                         <?php
@@ -157,15 +158,31 @@ if (!function_exists('formatBytes')) {
                                 <td style="padding: 5px;"><?php echo htmlspecialchars($row['tag_name']); ?></td>
                                 <td style="padding: 5px; text-align:right; font-weight:bold; color:<?php echo $color; ?>;">
                                     <?php if ($limit_bytes > 0): ?>
-                                            <?php echo $percent; ?>%
+                                        <?php echo $percent; ?>%
                                     <?php else: ?>
-                                            <span style="color:#aaa; font-weight:normal;">Unlimited</span>
+                                        <span style="color:#aaa; font-weight:normal;">Unlimited</span>
                                     <?php endif; ?>
                                 </td>
                                 <td style="padding: 5px; text-align:right; color:#777; font-size:0.85em;">
                                     <?php echo formatBytes($used); ?>
                                 </td>
                             </tr>
+                        <?php endforeach; ?>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card" style="flex: 1; display:flex; flex-direction:column; padding: 1em; margin-bottom:0;">
+                <h3 style="margin-top:0; margin-bottom:10px; font-size:1.1em; text-align:center;">Filter by Tag</h3>
+                <form method="GET" style="width:100%;">
+                    <select name="filter_tag" onchange="this.form.submit()"
+                        style="width:100%; padding:10px; background:#333; color:#fff; border:1px solid #444; border-radius:4px;">
+                        <option value="">All Tags</option>
+                        <?php foreach ($available_tags as $tag): ?>
+                            <option value="<?php echo $tag['id']; ?>" <?php if ($filter_tag_id == $tag['id'])
+                                   echo 'selected'; ?>>
+                                <?php echo htmlspecialchars($tag['tag_name']); ?>
+                            </option>
                         <?php endforeach; ?>
                     </select>
                 </form>
@@ -174,64 +191,64 @@ if (!function_exists('formatBytes')) {
 
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
             <?php foreach ($assets as $asset): ?>
-                    <div class="card" style="padding: 1em; margin-bottom: 0;">
-                        <?php
-                        $file_url = 'serve_asset.php?id=' . $asset['id'];
-                        $is_image = strpos($asset['mime_type'], 'image') !== false;
-                        $is_video = strpos($asset['mime_type'], 'video') !== false;
-                        ?>
-                        <div onclick="showPreview('<?php echo $file_url; ?>', '<?php echo $asset['mime_type']; ?>')"
-                            style="aspect-ratio: 16/9; width: 100%; background: #000; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; overflow: hidden; border-radius: 4px; cursor: pointer;">
-                            <?php if ($is_image): ?>
-                                    <img src="<?php echo $file_url; ?>" style="width: 100%; height: 100%; object-fit: cover;">
-                            <?php elseif ($is_video): ?>
-                                    <video src="<?php echo $file_url; ?>" style="width: 100%; height: 100%; object-fit: cover;"></video>
-                            <?php else: ?>
-                                    <span style="color: #777;">No Preview</span>
-                            <?php endif; ?>
-                        </div>
-
-                        <?php if (!empty($asset['default_for_tags'])): ?>
-                                <div style="font-size: 0.8em; color: var(--accent-color); font-weight: bold; margin-bottom: 5px;">
-                                    Default: <?php echo htmlspecialchars($asset['default_for_tags']); ?>
-                                </div>
+                <div class="card" style="padding: 1em; margin-bottom: 0;">
+                    <?php
+                    $file_url = 'serve_asset.php?id=' . $asset['id'];
+                    $is_image = strpos($asset['mime_type'], 'image') !== false;
+                    $is_video = strpos($asset['mime_type'], 'video') !== false;
+                    ?>
+                    <div onclick="showPreview('<?php echo $file_url; ?>', '<?php echo $asset['mime_type']; ?>')"
+                        style="aspect-ratio: 16/9; width: 100%; background: #000; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; overflow: hidden; border-radius: 4px; cursor: pointer;">
+                        <?php if ($is_image): ?>
+                            <img src="<?php echo $file_url; ?>" style="width: 100%; height: 100%; object-fit: cover;">
+                        <?php elseif ($is_video): ?>
+                            <video src="<?php echo $file_url; ?>" style="width: 100%; height: 100%; object-fit: cover;"></video>
+                        <?php else: ?>
+                            <span style="color: #777;">No Preview</span>
                         <?php endif; ?>
-
-                        <div style="font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px;"
-                            title="<?php echo htmlspecialchars($asset['display_name'] ?? $asset['filename_original']); ?>">
-                            <?php echo htmlspecialchars($asset['display_name'] ?? $asset['filename_original']); ?>
-                        </div>
-
-                        <div style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">
-                            Size: <?php echo formatBytes($asset['size_bytes']); ?><br>
-                            <?php
-                            // Fetch tags for this asset
-                            $stmt_at = $pdo->prepare("SELECT t.tag_name FROM asset_tags at JOIN tags t ON at.asset_id = ? AND at.tag_id = t.id");
-                            $stmt_at->execute([$asset['id']]);
-                            $at_names = $stmt_at->fetchAll(PDO::FETCH_COLUMN);
-                            $tag_display = empty($at_names) ? 'None' : implode(', ', $at_names);
-                            ?>
-                            Tags: <?php echo htmlspecialchars($tag_display); ?><br>
-                            By: <?php echo htmlspecialchars($asset['username'] ?? 'System'); ?><br>
-                            Date: <?php echo date('M j, Y', strtotime($asset['created_at'])); ?>
-                        </div>
-
-                        <div style="display:flex; gap:10px;">
-                            <a href="edit_asset.php?id=<?php echo $asset['id']; ?>" class="btn btn-sm btn-secondary"
-                                style="flex:1; text-align:center;">Edit</a>
-                            <?php if (($is_admin || $asset['uploaded_by'] == $_SESSION['user_id']) && empty($asset['default_for_tags'])): ?>
-                                    <form method="POST" onsubmit="return confirm('Delete this asset? This cannot be undone.');"
-                                        style="flex:1;">
-                                        <input type="hidden" name="action" value="delete_asset">
-                                        <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
-                                        <button type="submit" class="btn-delete btn-sm" style="width: 100%;">Delete</button>
-                                    </form>
-                            <?php else: ?>
-                                    <button class="btn-delete btn-sm" style="flex:1; opacity:0.5; cursor:not-allowed;"
-                                        disabled>Delete</button>
-                            <?php endif; ?>
-                        </div>
                     </div>
+
+                    <?php if (!empty($asset['default_for_tags'])): ?>
+                        <div style="font-size: 0.8em; color: var(--accent-color); font-weight: bold; margin-bottom: 5px;">
+                            Default: <?php echo htmlspecialchars($asset['default_for_tags']); ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <div style="font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px;"
+                        title="<?php echo htmlspecialchars($asset['display_name'] ?? $asset['filename_original']); ?>">
+                        <?php echo htmlspecialchars($asset['display_name'] ?? $asset['filename_original']); ?>
+                    </div>
+
+                    <div style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">
+                        Size: <?php echo formatBytes($asset['size_bytes']); ?><br>
+                        <?php
+                        // Fetch tags for this asset
+                        $stmt_at = $pdo->prepare("SELECT t.tag_name FROM asset_tags at JOIN tags t ON at.asset_id = ? AND at.tag_id = t.id");
+                        $stmt_at->execute([$asset['id']]);
+                        $at_names = $stmt_at->fetchAll(PDO::FETCH_COLUMN);
+                        $tag_display = empty($at_names) ? 'None' : implode(', ', $at_names);
+                        ?>
+                        Tags: <?php echo htmlspecialchars($tag_display); ?><br>
+                        By: <?php echo htmlspecialchars($asset['username'] ?? 'System'); ?><br>
+                        Date: <?php echo date('M j, Y', strtotime($asset['created_at'])); ?>
+                    </div>
+
+                    <div style="display:flex; gap:10px;">
+                        <a href="edit_asset.php?id=<?php echo $asset['id']; ?>" class="btn btn-sm btn-secondary"
+                            style="flex:1; text-align:center;">Edit</a>
+                        <?php if (($is_admin || $asset['uploaded_by'] == $_SESSION['user_id']) && empty($asset['default_for_tags'])): ?>
+                            <form method="POST" onsubmit="return confirm('Delete this asset? This cannot be undone.');"
+                                style="flex:1;">
+                                <input type="hidden" name="action" value="delete_asset">
+                                <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
+                                <button type="submit" class="btn-delete btn-sm" style="width: 100%;">Delete</button>
+                            </form>
+                        <?php else: ?>
+                            <button class="btn-delete btn-sm" style="flex:1; opacity:0.5; cursor:not-allowed;"
+                                disabled>Delete</button>
+                        <?php endif; ?>
+                    </div>
+                </div>
             <?php endforeach; ?>
         </div>
     </div>
@@ -249,9 +266,9 @@ if (!function_exists('formatBytes')) {
     </div>
 
     <script>
-        window.onclick = function(event) {
+        window.onclick = function (event) {
             if (event.target == document.getElementById('previewModal')) {
-                 document.getElementById('previewModal').style.display = 'none';
+                document.getElementById('previewModal').style.display = 'none';
             }
         }
 
