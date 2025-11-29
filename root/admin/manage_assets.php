@@ -167,20 +167,6 @@ if (!function_exists('formatBytes')) {
                                 </td>
                             </tr>
                         <?php endforeach; ?>
-                    </table>
-                </div>
-            </div>
-
-            <div class="card" style="flex: 1; display:flex; align-items:center; justify-content:center; margin-bottom:0;">
-                <form method="GET" style="width:100%;">
-                    <select name="filter_tag" onchange="this.form.submit()" style="width:100%; padding:10px;">
-                        <option value="">All Tags</option>
-                        <?php foreach ($available_tags as $tag): ?>
-                                <option value="<?php echo $tag['id']; ?>" <?php if ($filter_tag_id == $tag['id'])
-                                       echo 'selected'; ?>>
-                                    <?php echo htmlspecialchars($tag['tag_name']); ?>
-                                </option>
-                        <?php endforeach; ?>
                     </select>
                 </form>
             </div>
