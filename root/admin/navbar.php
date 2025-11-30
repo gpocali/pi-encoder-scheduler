@@ -51,6 +51,7 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
                     <a href="profile.php"><i class="bi bi-gear"></i> Profile Settings</a>
                     <?php if ($user_role === 'admin'): ?>
                         <a href="manage_users.php"><i class="bi bi-people"></i> Manage Users</a>
+                        <a href="default_assets.php"><i class="bi bi-images"></i> Default Assets</a>
                     <?php endif; ?>
                     <div class="dropdown-divider"></div>
                     <a href="logout.php"><i class="bi bi-box-arrow-right"></i> Logout</a>
