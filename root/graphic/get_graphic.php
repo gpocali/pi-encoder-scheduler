@@ -1,6 +1,6 @@
 <?php
 // Include your database connection
-require_once '../db_connect.php'; 
+require_once '../db_connect.php';
 date_default_timezone_set('America/New_York');
 
 // 1. Get the requested tag from the URL
@@ -18,8 +18,9 @@ $now_utc = (new DateTime())->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d
 $sql = "
     SELECT a.filename_disk, a.mime_type, a.md5_hash, a.filename_original
     FROM events e
+    JOIN event_tags et ON e.id = et.event_id
     JOIN assets a ON e.asset_id = a.id
-    JOIN tags t ON e.tag_id = t.id
+    JOIN tags t ON et.tag_id = t.id
     WHERE t.tag_name = ? 
       AND e.start_time <= ? AND e.end_time > ?
     ORDER BY e.priority DESC, e.start_time ASC 
@@ -43,8 +44,9 @@ if ($target_asset_type === 'next') {
     $sql_target = "
         SELECT a.filename_disk, a.mime_type, a.md5_hash, a.filename_original
         FROM events se
+        JOIN event_tags et ON se.id = et.event_id
         JOIN assets a ON se.asset_id = a.id
-        JOIN tags t ON se.tag_id = t.id
+        JOIN tags t ON et.tag_id = t.id
         WHERE t.tag_name = ? AND se.start_time > ?
         ORDER BY se.start_time ASC
         LIMIT 1
@@ -90,10 +92,10 @@ if ($target_asset_type === 'next') {
 // 6. Serve the file or hash if an asset was found.
 if ($asset_to_serve) {
     // Ensure the file path is correct for your environment.
-    $file_path = '/uploads/' . $asset_to_serve['filename_disk']; 
+    $file_path = '/uploads/' . $asset_to_serve['filename_disk'];
 
     if (file_exists($file_path)) {
-        if(isset($_REQUEST['md5_hash'])){
+        if (isset($_REQUEST['md5_hash'])) {
             echo $asset_to_serve['md5_hash'];
             exit;
         } else {
@@ -104,16 +106,16 @@ if ($asset_to_serve) {
             // Let's use the actual mime type but add Content-Disposition inline if it's viewable, or attachment if not?
             // Actually, the previous code used application/octet-stream.
             // I will switch to the real MIME type to be safe for "previews" but keep Content-Disposition.
-            
+
             $mime_type = $asset_to_serve['mime_type'] ?: 'application/octet-stream';
-            
+
             header('Content-Type: ' . $mime_type);
             header('Content-Disposition: inline; filename="' . $asset_to_serve['filename_original'] . '"');
             header('Content-Length: ' . filesize($file_path));
-            header('Cache-Control: no-cache, no-store, must-revalidate'); 
+            header('Cache-Control: no-cache, no-store, must-revalidate');
             header('Pragma: no-cache');
             header('Expires: 0');
-            
+
             ob_clean();
             flush();
             readfile($file_path);

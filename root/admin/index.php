@@ -1,6 +1,7 @@
 <?php
 require_once 'auth.php';
 require_once '../db_connect.php';
+require_once 'ScheduleLogic.php';
 date_default_timezone_set('America/New_York');
 
 // Helper to get current URL with modified params
@@ -177,6 +178,54 @@ if ($view == 'list') {
     $stmt->execute($params);
     $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // Resolve Schedule Conflicts
+    if (!empty($events)) {
+        $min_start = $events[0]['start_time'];
+        $max_end = $events[0]['end_time'];
+        $page_ids = [];
+        $page_tag_ids = [];
+
+        foreach ($events as $ev) {
+            if ($ev['start_time'] < $min_start)
+                $min_start = $ev['start_time'];
+            if ($ev['end_time'] > $max_end)
+                $max_end = $ev['end_time'];
+            $page_ids[] = $ev['id'];
+            $page_tag_ids[] = $ev['tag_id'];
+        }
+        $page_tag_ids = array_unique($page_tag_ids);
+
+        if (!empty($page_tag_ids)) {
+            $placeholders = implode(',', array_fill(0, count($page_tag_ids), '?'));
+            $not_in_ids = implode(',', $page_ids);
+
+            // Fetch context: events overlapping the range, same tags, not in current page
+            $sql_ctx = "SELECT e.*, a.filename_original 
+                        FROM events e 
+                        JOIN assets a ON e.asset_id = a.id 
+                        WHERE e.tag_id IN ($placeholders)
+                        AND e.start_time < ? AND e.end_time > ?
+                        AND e.id NOT IN ($not_in_ids)";
+
+            $stmt_ctx = $pdo->prepare($sql_ctx);
+            $params_ctx = array_merge($page_tag_ids, [$max_end, $min_start]);
+            $stmt_ctx->execute($params_ctx);
+            $ctx_events = $stmt_ctx->fetchAll(PDO::FETCH_ASSOC);
+
+            $all_relevant = array_merge($events, $ctx_events);
+            $resolved = ScheduleLogic::resolveSchedule($all_relevant);
+
+            // Filter back to page events
+            $final_events = [];
+            foreach ($resolved as $r) {
+                if (in_array($r['id'], $page_ids)) {
+                    $final_events[] = $r;
+                }
+            }
+            $events = $final_events;
+        }
+    }
+
 } elseif ($view == 'month') {
     $start_month = date('Y-m-01', strtotime($filter_date));
     $end_month = date('Y-m-t', strtotime($filter_date));
@@ -184,19 +233,36 @@ if ($view == 'list') {
     $start_utc = (new DateTime($start_month . ' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
     $end_utc = (new DateTime($end_month . ' 23:59:59'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-    $where_clauses[] = "e.start_time BETWEEN ? AND ?";
-    $params[] = $start_utc;
+    $where_clauses[] = "e.start_time < ? AND e.end_time > ?";
     $params[] = $end_utc;
+    $params[] = $start_utc;
 
     $sql = "SELECT DISTINCT e.* FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $raw_events = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Group by day
+    // Resolve Schedule
+    $raw_events = ScheduleLogic::resolveSchedule($raw_events);
+
+    // Group by day (handling spans)
+    $month_start_ts = strtotime($start_month);
+    $year = date('Y', $month_start_ts);
+    $month = date('m', $month_start_ts);
+
     foreach ($raw_events as $ev) {
-        $day = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('j');
-        $events[$day][] = $ev;
+        $ev_start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
+        $ev_end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
+
+        for ($d = 1; $d <= $days_in_month; $d++) {
+            $day_start = new DateTime("$year-$month-$d 00:00:00", new DateTimeZone('America/New_York'));
+            $day_end = clone $day_start;
+            $day_end->modify('+1 day');
+
+            if ($ev_start < $day_end && $ev_end > $day_start) {
+                $events[$d][] = $ev;
+            }
+        }
     }
 
 } elseif ($view == 'week') {
@@ -213,32 +279,55 @@ if ($view == 'list') {
     $start_utc = (new DateTime($start_week . ' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
     $end_utc = (new DateTime($end_week . ' 23:59:59'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-    $where_clauses[] = "e.start_time BETWEEN ? AND ?";
-    $params[] = $start_utc;
+    $where_clauses[] = "e.start_time < ? AND e.end_time > ?";
     $params[] = $end_utc;
+    $params[] = $start_utc;
 
     $sql = "SELECT DISTINCT e.* FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $raw_events = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // Resolve Schedule
+    $raw_events = ScheduleLogic::resolveSchedule($raw_events);
+
     // Group by Date (Y-m-d)
+    $week_dates = [];
+    $dt = new DateTime($start_week);
+    for ($i = 0; $i < 7; $i++) {
+        $week_dates[] = $dt->format('Y-m-d');
+        $dt->modify('+1 day');
+    }
+
     foreach ($raw_events as $ev) {
-        $date = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('Y-m-d');
-        $events[$date][] = $ev;
+        $ev_start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
+        $ev_end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
+
+        foreach ($week_dates as $date_str) {
+            $day_start = new DateTime("$date_str 00:00:00", new DateTimeZone('America/New_York'));
+            $day_end = clone $day_start;
+            $day_end->modify('+1 day');
+
+            if ($ev_start < $day_end && $ev_end > $day_start) {
+                $events[$date_str][] = $ev;
+            }
+        }
     }
 } elseif ($view == 'day') {
     $start_utc = (new DateTime($filter_date . ' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
     $end_utc = (new DateTime($filter_date . ' 23:59:59'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-    $where_clauses[] = "e.start_time BETWEEN ? AND ?";
-    $params[] = $start_utc;
+    $where_clauses[] = "e.start_time < ? AND e.end_time > ?";
     $params[] = $end_utc;
+    $params[] = $start_utc;
 
     $sql = "SELECT DISTINCT e.*, a.filename_original FROM events e JOIN event_tags et ON e.id = et.event_id JOIN assets a ON e.asset_id = a.id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Resolve Schedule
+    $events = ScheduleLogic::resolveSchedule($events);
 }
 
 ?>
