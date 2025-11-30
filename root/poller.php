@@ -3,7 +3,7 @@
 // Run in background: php poller.php &
 
 // 1. CONFIGURATION
-$storage_dir = __DIR__ . '/admin/data';
+$storage_dir = __DIR__ . '/data';
 $json_file = $storage_dir . '/live_stats.json';
 $ssh_user = 'root'; // The user allowed via Tailscale ACLs
 
