@@ -31,3 +31,5 @@ chown -R nginx:nginx /uploads
 chmod -R 777 /uploads
 
 mariadb-tzinfo-to-sql /usr/share/zoneinfo | mariadb -u root -p mysql
+
+apk add rrdtool php84-gd php84-cli
