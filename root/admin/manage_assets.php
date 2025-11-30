@@ -1,14 +1,51 @@
 <?php
 require_once 'auth.php';
 require_once '../db_connect.php';
-
 $user_id = $_SESSION['user_id'];
 $is_admin = is_admin();
 $is_full_user = has_role('user');
 $is_tag_editor = has_role('tag_editor');
 
 // Initialize variables
+$errors = [];
 $filter_tag_id = isset($_GET['filter_tag']) ? $_GET['filter_tag'] : null;
+
+// Handle Actions
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['action']) && $_POST['action'] === 'delete_asset') {
+        $asset_id = $_POST['asset_id'];
+
+        // Fetch asset to check permissions and get filename
+        $stmt = $pdo->prepare("SELECT * FROM assets WHERE id = ?");
+        $stmt->execute([$asset_id]);
+        $asset = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($asset) {
+            // Check permissions
+            if ($is_admin || $asset['uploaded_by'] == $user_id) {
+                // Delete file
+                $file_path = '/uploads/' . $asset['filename_disk'];
+                if (file_exists($file_path)) {
+                    unlink($file_path);
+                }
+
+                // Delete from DB
+                try {
+                    $stmt = $pdo->prepare("DELETE FROM assets WHERE id = ?");
+                    $stmt->execute([$asset_id]);
+                    $success_message = "Asset deleted successfully.";
+                } catch (PDOException $e) {
+                    $errors[] = "Cannot delete asset: It might be in use by scheduled events.";
+                }
+            } else {
+                $errors[] = "You do not have permission to delete this asset.";
+            }
+        } else {
+            $errors[] = "Asset not found.";
+        }
+    }
+}
+
 $sql_assets = "SELECT a.*, u.username, at.tag_id 
                FROM assets a 
                LEFT JOIN users u ON a.uploaded_by = u.id 
