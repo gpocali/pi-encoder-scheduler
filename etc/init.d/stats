@@ -1,0 +1,91 @@
+#!/sbin/openrc-run
+# cp /var/www/localhost/pi-encoder-scheduler/etc/init.d/stats /etc/init.d/
+# chmod 744 /etc/init.d/stats
+# rc-update add stats default
+###
+### Live Streaming Audio Encoder Listener Stats Service
+### Writen by: Gregory Pocali 11-30-2025
+### For use with Alpine Linux
+### 2025 All Rights Reserved.
+###
+
+RC_SVCNAME=stats
+
+name=$RC_SVCNAME
+command="/usr/bin/screen"
+command_args="-dmS $RC_SVCNAME php /var/www/localhost/pi-encoder-scheduler/poller.php"
+command_user="root"
+pidfile="/run/$RC_SVCNAME/$RC_SVCNAME.pid"
+command_background="yes"
+
+exitScreen() {
+    name="$1"
+    if [[ "$name" == "" ]]; then return 0; fi
+    counter=0
+    echo -n "Exiting $name..."
+    if [ $(screen -ls | awk '{print $1}' | grep -E ".${name}$" | wc -l) -ne 0 ]; then
+        screen -X -S $name quit
+    fi
+    while [ $(screen -ls | awk '{print $1}' | grep -E ".${name}$" | wc -l) -ne 0 ]; do 
+        screen -X -S $name quit
+        echo -n "."
+        if [ $counter -lt 10 ]; then
+            sleep 1
+        else
+            counter=$(($counter+1))
+        fi
+    done
+    echo "done."
+    return 0
+}
+
+depend() {
+    need net
+}
+
+start_pre() {
+    if ! command -v screen > /dev/null; then
+        apk add screen rrdtool php84-gd php84-cli
+        if ! command -v screen > /dev/null; then
+            eerror "screen not found"
+            return 1
+        fi
+    fi
+    checkpath --directory --owner $command_user:$command_user --mode 0775 \
+        /run/$RC_SVCNAME /var/log/$RC_SVCNAME
+}
+
+start(){
+    ebegin "Starting $name"
+    $command $command_args
+    echo $(screen -ls | awk '{print $1}' | grep -E ".${name}$" | cut -d. -f2) > $pidfile
+    if [ $(screen -ls | awk '{print $1}' | grep "$(cat $pidfile)." | wc -l) -eq 1 ]; then
+        eend 1
+    else
+        eend 0
+    fi
+}
+
+stop(){
+    ebegin "Stopping $name"
+    exitScreen $name
+    status=$?
+    if [ -e $pidfile.child ]; then
+        while read line; do
+            if [[ "$line" != "" ]]; then
+                exitScreen $line
+            fi
+        done < $pidfile.child 
+    fi
+    eend 0
+}
+
+status(){
+    if [ $(screen -ls | awk '{print $1}' | grep -E ".${name}$" | wc -l) -eq 1 ]; then
+        echo Status: Running
+        return 0
+    else
+        echo Status: Stopped
+        return 1
+    fi
+}
