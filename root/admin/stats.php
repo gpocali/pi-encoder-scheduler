@@ -270,7 +270,7 @@ require_role(['admin', 'user']);
             async function updateDashboard(forceGraphRefresh = false) {
                 try {
                     // Fetch JSON with cache busting
-                    const response = await fetch('data/live_stats.json?nocache=' + Date.now());
+                    const response = await fetch('api_stats.php?nocache=' + Date.now());
                     if (!response.ok) throw new Error("Network response was not ok");
 
                     const data = await response.json();

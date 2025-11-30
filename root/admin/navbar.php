@@ -3,45 +3,60 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 $current_page = basename($_SERVER['PHP_SELF']);
-$user_role = $_SESSION['role'] ?? 'guest';
-$user_id_nav = $_SESSION['user_id'] ?? 0;
 ?>
 <!-- Bootstrap Icons -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
 <nav class="navbar">
-    </li>
-    <li>
-        <a href="create_event.php" class="<?php echo $current_page == 'create_event.php' ? 'active' : ''; ?>">
-            <i class="bi bi-calendar-plus"></i> Create Event
-        </a>
-    </li>
-    <?php if ($user_role === 'admin'): ?>
-        <li>
-            <a href="manage_users.php" class="<?php echo $current_page == 'manage_users.php' ? 'active' : ''; ?>">
-                <i class="bi bi-people"></i> Users
+    <div class="container navbar-content">
+        <div class="navbar-left">
+            <a href="index.php" class="navbar-brand">
+                <i class="bi bi-broadcast"></i> WRHU Scheduler
             </a>
-        </li>
-    <?php endif; ?>
-    </ul>
-    </div>
-    <div class="navbar-user">
-        <button id="global-upload-btn" class="btn btn-sm upload-btn">
-            <i class="bi bi-cloud-upload"></i> Upload Asset
-        </button>
+            <ul class="navbar-nav">
+                <li>
+                    <a href="index.php" class="<?php echo $current_page == 'index.php' ? 'active' : ''; ?>">
+                        <i class="bi bi-speedometer2"></i> Dashboard
+                    </a>
+                </li>
+                <li>
+                    <a href="stats.php" class="<?php echo $current_page == 'stats.php' ? 'active' : ''; ?>">
+                        <i class="bi bi-graph-up"></i> Statistics
+                    </a>
+                </li>
+                <li>
+                    <a href="create_event.php"
+                        class="<?php echo $current_page == 'create_event.php' ? 'active' : ''; ?>">
+                        <i class="bi bi-calendar-plus"></i> Create Event
+                    </a>
+                </li>
+                <?php if ($user_role === 'admin'): ?>
+                    <li>
+                        <a href="manage_users.php"
+                            class="<?php echo $current_page == 'manage_users.php' ? 'active' : ''; ?>">
+                            <i class="bi bi-people"></i> Users
+                        </a>
+                    </li>
+                <?php endif; ?>
+            </ul>
+        </div>
+        <div class="navbar-user">
+            <button id="global-upload-btn" class="btn btn-sm upload-btn">
+                <i class="bi bi-cloud-upload"></i> Upload Asset
+            </button>
 
-        <div class="dropdown">
-            <a href="#" class="dropdown-toggle">
-                <i class="bi bi-person-circle"></i> <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?> <i
-                    class="bi bi-caret-down-fill" style="font-size:0.8em;"></i>
-            </a>
-            <div class="dropdown-content">
-                <a href="profile.php"><i class="bi bi-gear"></i> Profile Settings</a>
-                <div class="dropdown-divider"></div>
-                <a href="logout.php"><i class="bi bi-box-arrow-right"></i> Logout</a>
+            <div class="dropdown">
+                <a href="#" class="dropdown-toggle">
+                    <i class="bi bi-person-circle"></i> <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?>
+                    <i class="bi bi-caret-down-fill" style="font-size:0.8em;"></i>
+                </a>
+                <div class="dropdown-content">
+                    <a href="profile.php"><i class="bi bi-gear"></i> Profile Settings</a>
+                    <div class="dropdown-divider"></div>
+                    <a href="logout.php"><i class="bi bi-box-arrow-right"></i> Logout</a>
+                </div>
             </div>
         </div>
-    </div>
     </div>
 </nav>
 
