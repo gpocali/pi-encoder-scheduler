@@ -18,6 +18,10 @@ $nodes = [
         'host' => '100.100.63.43',
         'map' => ['stream1' => 'WRHU', 'stream2' => 'HAWC', 'stream3' => 'SPEV']
     ],
+    'WRHU-Server03' => [
+        'host' => '100.76.127.104',
+        'map' => ['stream1' => 'WRHU', 'stream2' => 'HAWC', 'stream3' => 'SPEV']
+    ],
     'WRHU-Server04' => [
         'host' => '100.97.65.29',
         'map' => ['stream1' => 'WRHU', 'stream2' => 'HAWC', 'stream3' => 'SPEV']
