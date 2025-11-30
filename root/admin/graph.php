@@ -5,7 +5,7 @@ require_role(['admin', 'user']);
 // graph.php
 header('Content-Type: image/png');
 
-$storage_dir = __DIR__ . '/data';
+$storage_dir = __DIR__ . '/../data';
 $stream = $_GET['s'] ?? 'WRHU';
 $node = $_GET['n'] ?? 'Global';
 $period = $_GET['p'] ?? '-24h';
