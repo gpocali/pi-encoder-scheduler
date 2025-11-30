@@ -13,7 +13,7 @@ RC_SVCNAME=stats
 
 name=$RC_SVCNAME
 command="/usr/bin/screen"
-command_args="-dmS $RC_SVCNAME php /var/www/localhost/pi-encoder-scheduler/poller.php"
+command_args="-dmS $RC_SVCNAME php /var/www/localhost/pi-encoder-scheduler/root/poller.php"
 command_user="root"
 pidfile="/run/$RC_SVCNAME/$RC_SVCNAME.pid"
 command_background="yes"
