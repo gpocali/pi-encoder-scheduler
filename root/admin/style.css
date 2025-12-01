@@ -510,6 +510,23 @@ footer {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    display: block;
+    color: #e0e0e0;
+    text-decoration: none;
+}
+
+.cal-event.priority-2 {
+    border-left: 3px solid var(--error-color);
+}
+
+.cal-event.priority-1 {
+    border-left: 3px solid var(--secondary-color);
+}
+
+.week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 10px;
 }
 
 .badge {

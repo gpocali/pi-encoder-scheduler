@@ -545,7 +545,7 @@ if ($view == 'list') {
                             $status_color = 'var(--error-color)';
                         }
                         ?>
-                        <tr class="priority-<?php echo $ev['priority']; ?>">
+                        <tr>
                             <td><span
                                     style="color:<?php echo $status_color; ?>; font-weight:bold;"><?php echo $status; ?></span>
                             </td>
@@ -709,7 +709,7 @@ if ($view == 'list') {
                         $start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
                         $end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
                         ?>
-                        <div class="priority-<?php echo $ev['priority']; ?>"
+                        <div
                             style="padding:1em; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
                             <div>
                                 <div style="font-weight:bold; font-size:1.1em;"><?php echo $start . ' - ' . $end; ?></div>
