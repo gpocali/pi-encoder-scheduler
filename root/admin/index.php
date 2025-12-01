@@ -549,13 +549,13 @@ if ($view == 'list') {
                             <td>
                                 <?php
                                 $prio_label = 'Normal';
-                                $prio_class = 'p-1';
-                                if ($ev['priority'] == 10) {
+                                $prio_class = 'p-0';
+                                if ($ev['priority'] == 2) {
                                     $prio_label = 'High';
-                                    $prio_class = 'p-10';
-                                } elseif ($ev['priority'] == 5) {
+                                    $prio_class = 'p-2';
+                                } elseif ($ev['priority'] == 1) {
                                     $prio_label = 'Medium';
-                                    $prio_class = 'p-5';
+                                    $prio_class = 'p-1';
                                 }
                                 ?>
                                 <span class="priority-badge <?php echo $prio_class; ?>"><?php echo $prio_label; ?></span>
@@ -724,7 +724,7 @@ if ($view == 'list') {
                             <div>
                                 <div style="font-weight:bold; font-size:1.1em;">
                                     <?php echo $start . ' - ' . $end; ?>
-                                    <?php if ($ev['priority'] == 10): ?>
+                                    <?php if ($ev['priority'] == 2): ?>
                                         <span class="badge badge-live" style="margin-left:10px; font-size:0.7em;">HIGH PRIORITY</span>
                                     <?php endif; ?>
                                 </div>

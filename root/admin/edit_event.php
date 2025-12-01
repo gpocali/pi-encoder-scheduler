@@ -564,12 +564,12 @@ if ($event['asset_id'] > 0) {
                         <div class="form-group">
                             <label>Priority</label>
                             <select name="priority">
-                                <option value="1" <?php if ($event['priority'] == 1)
+                                <option value="0" <?php if ($event['priority'] == 0)
                                     echo 'selected'; ?>>Normal (Default)
                                 </option>
-                                <option value="5" <?php if ($event['priority'] == 5)
+                                <option value="1" <?php if ($event['priority'] == 1)
                                     echo 'selected'; ?>>Medium</option>
-                                <option value="10" <?php if ($event['priority'] == 10)
+                                <option value="2" <?php if ($event['priority'] == 2)
                                     echo 'selected'; ?>>High (Preempts
                                     others)</option>
                             </select>
