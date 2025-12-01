@@ -80,18 +80,31 @@ foreach ($legends as $index => $legend) {
     ];
 }
 
-// Regex to find rows: <row><t>TIMESTAMP</t><v>VALUE</v><v>VALUE</v>...</row>
-// Updated to be more permissive with whitespace
-if (preg_match_all('/<row>\s*<t>\s*(\d+)\s*<\/t>(.*?)<\/row>/si', $xml_string, $row_matches, PREG_SET_ORDER)) {
-    error_log("Found " . count($row_matches) . " rows.");
+// Parse Meta for Start and Step
+$start = 0;
+$step = 300; // Default
 
-    foreach ($row_matches as $match) {
-        $t = (int) $match[1];
+if (preg_match('/<start>(\d+)<\/start>/', $xml_string, $m)) {
+    $start = (int) $m[1];
+}
+if (preg_match('/<step>(\d+)<\/step>/', $xml_string, $m)) {
+    $step = (int) $m[1];
+}
+
+// Regex to find rows: <row><v>VALUE</v><v>VALUE</v>...</row>
+// Note: RRDTool xport XML might NOT have <t> tags inside <row>
+if (preg_match_all('/<row>(.*?)<\/row>/si', $xml_string, $row_matches)) {
+    error_log("Found " . count($row_matches[1]) . " rows.");
+
+    $currentRow = 0;
+    foreach ($row_matches[1] as $row_content) {
+        // Calculate timestamp
+        // Timestamp for row i is start + step * (i + 1)
+        $t = $start + ($step * ($currentRow + 1));
         $labels[] = $t * 1000;
-        $values_str = $match[2];
 
         // Extract values
-        if (preg_match_all('/<v>\s*(.*?)\s*<\/v>/i', $values_str, $v_matches)) {
+        if (preg_match_all('/<v>\s*(.*?)\s*<\/v>/i', $row_content, $v_matches)) {
             foreach ($v_matches[1] as $i => $val) {
                 if (strcasecmp($val, 'NaN') === 0) {
                     $v = null;
@@ -104,6 +117,7 @@ if (preg_match_all('/<row>\s*<t>\s*(\d+)\s*<\/t>(.*?)<\/row>/si', $xml_string, $
                 }
             }
         }
+        $currentRow++;
     }
 } else {
     error_log("No rows matched regex in RRDTool output.");
