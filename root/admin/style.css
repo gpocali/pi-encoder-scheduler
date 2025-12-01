@@ -413,12 +413,59 @@ footer {
     text-decoration: none;
 }
 
-.cal-event.priority-2 {
+.cal-event.priority-10 {
     border-left: 3px solid var(--error-color);
 }
 
-.cal-event.priority-1 {
+.cal-event.priority-5 {
     border-left: 3px solid var(--secondary-color);
+}
+
+/* List View Priority Indicators */
+.priority-badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: bold;
+    display: inline-block;
+}
+
+.priority-badge.p-10 {
+    background: rgba(207, 102, 121, 0.2);
+    color: var(--error-color);
+    border: 1px solid var(--error-color);
+}
+
+.priority-badge.p-5 {
+    background: rgba(3, 218, 198, 0.2);
+    color: var(--secondary-color);
+    border: 1px solid var(--secondary-color);
+}
+
+.priority-badge.p-1 {
+    background: #333;
+    color: #aaa;
+    border: 1px solid #555;
+}
+
+/* Day View Priority Styles */
+.day-event {
+    padding: 1em;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-left: 4px solid transparent;
+    /* Default border */
+}
+
+.day-event.priority-10 {
+    border-left-color: var(--error-color);
+    background: linear-gradient(90deg, rgba(207, 102, 121, 0.05) 0%, transparent 100%);
+}
+
+.day-event.priority-5 {
+    border-left-color: var(--secondary-color);
 }
 
 .week-grid {

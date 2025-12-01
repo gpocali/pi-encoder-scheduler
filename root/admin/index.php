@@ -395,7 +395,7 @@ if ($view == 'list') {
         // Auto-refresh every 60 seconds to update Live Monitor
         setTimeout(function () {
             window.location.reload();
-    }, 60000);
+        }, 60000);
     </script>
 </head>
 
@@ -517,6 +517,7 @@ if ($view == 'list') {
                 <thead>
                     <tr>
                         <th>Status</th>
+                        <th>Priority</th>
                         <th>Event Name</th>
                         <th>Tag</th>
                         <th>Start Time</th>
@@ -544,6 +545,20 @@ if ($view == 'list') {
                         <tr>
                             <td><span
                                     style="color:<?php echo $status_color; ?>; font-weight:bold;"><?php echo $status; ?></span>
+                            </td>
+                            <td>
+                                <?php
+                                $prio_label = 'Normal';
+                                $prio_class = 'p-1';
+                                if ($ev['priority'] == 10) {
+                                    $prio_label = 'High';
+                                    $prio_class = 'p-10';
+                                } elseif ($ev['priority'] == 5) {
+                                    $prio_label = 'Medium';
+                                    $prio_class = 'p-5';
+                                }
+                                ?>
+                                <span class="priority-badge <?php echo $prio_class; ?>"><?php echo $prio_label; ?></span>
                             </td>
                             <td><?php echo htmlspecialchars($ev['event_name']); ?><?php if (!empty($ev['is_modified']))
                                    echo ' <small style="color:orange;">(Modified)</small>'; ?>
@@ -705,10 +720,14 @@ if ($view == 'list') {
                         $start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
                         $end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
                         ?>
-                        <div
-                            style="padding:1em; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+                        <div class="day-event priority-<?php echo $ev['priority']; ?>">
                             <div>
-                                <div style="font-weight:bold; font-size:1.1em;"><?php echo $start . ' - ' . $end; ?></div>
+                                <div style="font-weight:bold; font-size:1.1em;">
+                                    <?php echo $start . ' - ' . $end; ?>
+                                    <?php if ($ev['priority'] == 10): ?>
+                                        <span class="badge badge-live" style="margin-left:10px; font-size:0.7em;">HIGH PRIORITY</span>
+                                    <?php endif; ?>
+                                </div>
                                 <div style="color:var(--accent-color);"><?php echo htmlspecialchars($ev['event_name']); ?></div>
                                 <div style="font-size:0.9em; color:#888;">
                                     Tags:
