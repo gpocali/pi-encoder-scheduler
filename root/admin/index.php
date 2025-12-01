@@ -166,12 +166,11 @@ if ($view == 'list') {
     $total_pages = ceil($total_items / $per_page);
     $offset = ($page - 1) * $per_page;
 
-    $sql = "SELECT e.*, a.filename_original, GROUP_CONCAT(et.tag_id) as all_tags 
+    $sql = "SELECT DISTINCT e.*, a.filename_original 
             FROM events e 
             JOIN event_tags et ON e.id = et.event_id
             JOIN assets a ON e.asset_id = a.id 
             WHERE " . implode(" AND ", $where_clauses) . " 
-            GROUP BY e.id
             ORDER BY e.start_time ASC 
             LIMIT $per_page OFFSET $offset";
 
@@ -203,14 +202,13 @@ if ($view == 'list') {
             $ctx_events = [];
             if ($filter_tag) {
                 // If filtering by tag, context events must be on that tag
-                $sql_ctx = "SELECT e.*, a.filename_original, GROUP_CONCAT(et.tag_id) as all_tags 
+                $sql_ctx = "SELECT DISTINCT e.*, a.filename_original 
                             FROM events e 
                             JOIN event_tags et ON e.id = et.event_id
                             JOIN assets a ON e.asset_id = a.id 
                             WHERE et.tag_id = ?
                             AND e.start_time < ? AND e.end_time > ?
-                            AND e.id NOT IN ($not_in_ids)
-                            GROUP BY e.id";
+                            AND e.id NOT IN ($not_in_ids)";
                 $stmt_ctx = $pdo->prepare($sql_ctx);
                 $stmt_ctx->execute([$filter_tag, $max_end, $min_start]);
                 $ctx_events = $stmt_ctx->fetchAll(PDO::FETCH_ASSOC);
@@ -223,14 +221,12 @@ if ($view == 'list') {
                 unset($ev);
             } else {
                 // Default behavior: use primary tag_id
-                $sql_ctx = "SELECT e.*, a.filename_original, GROUP_CONCAT(et.tag_id) as all_tags 
+                $sql_ctx = "SELECT e.*, a.filename_original 
                             FROM events e 
-                            JOIN event_tags et ON e.id = et.event_id
                             JOIN assets a ON e.asset_id = a.id 
                             WHERE e.tag_id IN ($placeholders)
                             AND e.start_time < ? AND e.end_time > ?
-                            AND e.id NOT IN ($not_in_ids)
-                            GROUP BY e.id";
+                            AND e.id NOT IN ($not_in_ids)";
                 $stmt_ctx = $pdo->prepare($sql_ctx);
                 $params_ctx = array_merge($page_tag_ids, [$max_end, $min_start]);
                 $stmt_ctx->execute($params_ctx);
@@ -246,7 +242,7 @@ if ($view == 'list') {
             file_put_contents('debug_log.txt', "Filter Tag: " . ($filter_tag ? $filter_tag : 'None') . "\n", FILE_APPEND);
 
             foreach ($all_relevant as $e) {
-                file_put_contents('debug_log.txt', "INPUT: ID {$e['id']} Prio {$e['priority']} Tags [{$e['all_tags']}] {$e['start_time']} - {$e['end_time']}\n", FILE_APPEND);
+                file_put_contents('debug_log.txt', "INPUT: ID {$e['id']} Prio {$e['priority']} Tag {$e['tag_id']} {$e['start_time']} - {$e['end_time']}\n", FILE_APPEND);
             }
 
             $resolved = ScheduleLogic::resolveSchedule($all_relevant);
@@ -278,7 +274,7 @@ if ($view == 'list') {
     $params[] = $end_utc;
     $params[] = $start_utc;
 
-    $sql = "SELECT e.*, GROUP_CONCAT(et.tag_id) as all_tags FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses) . " GROUP BY e.id ORDER BY e.start_time ASC";
+    $sql = "SELECT DISTINCT e.* FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $raw_events = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -330,7 +326,7 @@ if ($view == 'list') {
     $params[] = $end_utc;
     $params[] = $start_utc;
 
-    $sql = "SELECT e.*, GROUP_CONCAT(et.tag_id) as all_tags FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses) . " GROUP BY e.id ORDER BY e.start_time ASC";
+    $sql = "SELECT DISTINCT e.* FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $raw_events = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -373,7 +369,7 @@ if ($view == 'list') {
     $params[] = $end_utc;
     $params[] = $start_utc;
 
-    $sql = "SELECT e.*, a.filename_original, GROUP_CONCAT(et.tag_id) as all_tags FROM events e JOIN event_tags et ON e.id = et.event_id JOIN assets a ON e.asset_id = a.id WHERE " . implode(" AND ", $where_clauses) . " GROUP BY e.id ORDER BY e.start_time ASC";
+    $sql = "SELECT DISTINCT e.*, a.filename_original FROM events e JOIN event_tags et ON e.id = et.event_id JOIN assets a ON e.asset_id = a.id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -399,7 +395,7 @@ if ($view == 'list') {
         // Auto-refresh every 60 seconds to update Live Monitor
         setTimeout(function () {
             window.location.reload();
-        }, 60000);
+    }, 60000);
     </script>
 </head>
 

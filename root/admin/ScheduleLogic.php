@@ -2,84 +2,85 @@
 
 class ScheduleLogic
 {
+    /**
+     * Resolves schedule conflicts by priority.
+     * 
+     * @param array $events List of events. Each event must have:
+     *                      'id', 'tag_id', 'start_time', 'end_time', 'priority'
+     *                      (start_time and end_time as 'Y-m-d H:i:s' strings)
+     * @return array The resolved list of event segments.
+     */
     public static function resolveSchedule(array $events)
     {
-        // 1. Prepare events with parsed tags
-        foreach ($events as &$ev) {
-            if (!empty($ev['all_tags'])) {
-                $ev['parsed_tags'] = explode(',', $ev['all_tags']);
-            } elseif (!empty($ev['tag_id'])) {
-                $ev['parsed_tags'] = [$ev['tag_id']];
-            } else {
-                $ev['parsed_tags'] = [];
-            }
+        // Group by tag_id because priorities only compete within the same tag (channel)
+        $eventsByTag = [];
+        foreach ($events as $ev) {
+            $eventsByTag[$ev['tag_id']][] = $ev;
         }
-        unset($ev);
-
-        // 2. Sort ALL events by Priority DESC, then Start Time ASC
-        usort($events, function ($a, $b) {
-            $pA = (int) ($a['priority'] ?? 0);
-            $pB = (int) ($b['priority'] ?? 0);
-
-            if ($pA != $pB) {
-                return $pB - $pA;
-            }
-            return strcmp($a['start_time'], $b['start_time']);
-        });
 
         $finalSegments = [];
-        $placedSegments = []; // Array of ['start'=>ts, 'end'=>ts, 'tags'=>[]]
 
-        foreach ($events as $ev) {
-            // Use UTC timestamps
-            $evStart = strtotime($ev['start_time'] . ' UTC');
-            $evEnd = strtotime($ev['end_time'] . ' UTC');
+        foreach ($eventsByTag as $tagId => $tagEvents) {
+            // Sort by Priority DESC, then Start Time ASC
+            usort($tagEvents, function ($a, $b) {
+                $pA = (int) ($a['priority'] ?? 0);
+                $pB = (int) ($b['priority'] ?? 0);
 
-            $candidates = [['start' => $evStart, 'end' => $evEnd]];
-
-            // Subtract overlapping HIGHER priority segments that SHARE A TAG
-            foreach ($placedSegments as $placed) {
-                // Check tag intersection
-                if (empty(array_intersect($ev['parsed_tags'], $placed['tags']))) {
-                    continue; // No shared tags, no conflict
+                if ($pA != $pB) {
+                    return $pB - $pA;
                 }
+                return strcmp($a['start_time'], $b['start_time']);
+            });
 
-                $newCandidates = [];
-                foreach ($candidates as $cand) {
-                    $subtracted = self::subtractInterval($cand, $placed);
-                    foreach ($subtracted as $s) {
-                        $newCandidates[] = $s;
+            $placedSegments = []; // Array of ['start' => ts, 'end' => ts]
+
+            foreach ($tagEvents as $ev) {
+                // Use UTC timestamps for calculation to avoid timezone shifts
+                $evStart = strtotime($ev['start_time'] . ' UTC');
+                $evEnd = strtotime($ev['end_time'] . ' UTC');
+
+                // Start with the full event as a single candidate segment
+                $candidates = [['start' => $evStart, 'end' => $evEnd]];
+
+                // Subtract all higher-priority placed segments from these candidates
+                foreach ($placedSegments as $placed) {
+                    $newCandidates = [];
+                    foreach ($candidates as $cand) {
+                        $subtracted = self::subtractInterval($cand, $placed);
+                        foreach ($subtracted as $s) {
+                            $newCandidates[] = $s;
+                        }
                     }
-                }
-                $candidates = $newCandidates;
-            }
-
-            // Add remaining candidates
-            foreach ($candidates as $cand) {
-                $newEv = $ev;
-                $newEv['start_time'] = gmdate('Y-m-d H:i:s', $cand['start']);
-                $newEv['end_time'] = gmdate('Y-m-d H:i:s', $cand['end']);
-
-                if ($cand['start'] != $evStart || $cand['end'] != $evEnd) {
-                    $newEv['is_modified'] = true;
+                    $candidates = $newCandidates;
                 }
 
-                $finalSegments[] = $newEv;
-                $placedSegments[] = [
-                    'start' => $cand['start'],
-                    'end' => $cand['end'],
-                    'tags' => $ev['parsed_tags']
-                ];
+                // Add remaining candidates to final output and to placedSegments
+                foreach ($candidates as $cand) {
+                    // Create a copy of the event with modified times
+                    $newEv = $ev;
+                    // Format back to UTC string
+                    $newEv['start_time'] = gmdate('Y-m-d H:i:s', $cand['start']);
+                    $newEv['end_time'] = gmdate('Y-m-d H:i:s', $cand['end']);
+
+                    // Mark as modified if it differs from original
+                    if ($cand['start'] != $evStart || $cand['end'] != $evEnd) {
+                        $newEv['is_modified'] = true;
+                    }
+
+                    $finalSegments[] = $newEv;
+                    $placedSegments[] = $cand;
+                }
             }
         }
 
-        // 3. Sort final result by start time
+        // Sort final result by start time
         usort($finalSegments, function ($a, $b) {
             return strcmp($a['start_time'], $b['start_time']);
         });
 
         return $finalSegments;
     }
+
     /**
      * Subtracts $sub from $source.
      * Returns an array of remaining intervals (0, 1, or 2).
