@@ -529,7 +529,9 @@ if ($view == 'list') {
                             <td><span
                                     style="color:<?php echo $status_color; ?>; font-weight:bold;"><?php echo $status; ?></span>
                             </td>
-                            <td><?php echo htmlspecialchars($ev['event_name']); ?></td>
+                            <td><?php echo htmlspecialchars($ev['event_name']); ?><?php if (!empty($ev['is_modified']))
+                                   echo ' <small style="color:orange;">(Modified)</small>'; ?>
+                            </td>
                             <td>
                                 <?php
                                 $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
