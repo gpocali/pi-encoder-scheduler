@@ -295,12 +295,65 @@ try {
             echo "Added 'display_name' to assets.<br>";
         } else {
             echo "'display_name' column already exists.<br>";
-        }
     } catch (Exception $e) {
         echo "Error adding 'display_name': " . $e->getMessage() . "<br>";
     }
 
     echo "<h3>Migration (Round 4) completed successfully!</h3>";
+
+    echo "<h2>Starting Migration (Round 5 - Recurring Events Refactor)...</h2>";
+
+    // 1. Create recurring_events table
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS recurring_events (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            event_name VARCHAR(255) NOT NULL,
+            start_time TIME NOT NULL,
+            duration INT NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE NULL,
+            recurrence_type ENUM('daily', 'weekly') NOT NULL,
+            recurrence_days VARCHAR(255) NULL,
+            asset_id INT NOT NULL,
+            priority INT NOT NULL DEFAULT 0,
+            parent_event_id INT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (asset_id) REFERENCES assets(id),
+            FOREIGN KEY (parent_event_id) REFERENCES recurring_events(id) ON DELETE SET NULL
+        )");
+        echo "Created/Verified 'recurring_events' table.<br>";
+    } catch (Exception $e) {
+        echo "Error creating 'recurring_events': " . $e->getMessage() . "<br>";
+    }
+
+    // 2. Create recurring_event_tags table
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS recurring_event_tags (
+            recurring_event_id INT NOT NULL,
+            tag_id INT NOT NULL,
+            PRIMARY KEY (recurring_event_id, tag_id),
+            FOREIGN KEY (recurring_event_id) REFERENCES recurring_events(id) ON DELETE CASCADE,
+            FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+        )");
+        echo "Created/Verified 'recurring_event_tags' table.<br>";
+    } catch (Exception $e) {
+        echo "Error creating 'recurring_event_tags': " . $e->getMessage() . "<br>";
+    }
+
+    // 3. Update events table
+    addColumnIfNotExists($pdo, 'events', 'recurring_event_id', "INT NULL");
+    addColumnIfNotExists($pdo, 'events', 'original_start_time', "DATETIME NULL");
+    addColumnIfNotExists($pdo, 'events', 'is_exception', "TINYINT(1) NOT NULL DEFAULT 0");
+
+    // Add FK for recurring_event_id if not exists (hard to check constraint existence easily in pure SQL without query, skipping for simplicity or try/catch)
+    try {
+        $pdo->exec("ALTER TABLE events ADD CONSTRAINT fk_events_recurring FOREIGN KEY (recurring_event_id) REFERENCES recurring_events(id) ON DELETE SET NULL");
+        echo "Added FK constraint to events.recurring_event_id.<br>";
+    } catch (Exception $e) {
+        // Ignore if already exists
+    }
+
+    echo "<h3>Migration (Round 5) completed successfully!</h3>";
 
 } catch (Exception $e) {
     echo "<h3>Fatal Error: " . $e->getMessage() . "</h3>";

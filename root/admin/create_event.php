@@ -169,86 +169,50 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         try {
             $pdo->beginTransaction();
 
-            // Create First Event
-            $start_utc = $start_dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-            $end_utc = $end_dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-
-            $sql_event = "INSERT INTO events (event_name, start_time, end_time, asset_id, priority, tag_id) VALUES (?, ?, ?, ?, ?, ?)";
-            $stmt_event = $pdo->prepare($sql_event);
-            $stmt_event->execute([$event_name, $start_utc, $end_utc, $asset_id, $priority, $selected_tag_ids[0]]);
-            $parent_id = $pdo->lastInsertId();
-
-            // Insert Tags
-            $stmt_et = $pdo->prepare("INSERT INTO event_tags (event_id, tag_id) VALUES (?, ?)");
-            foreach ($selected_tag_ids as $tid) {
-                $stmt_et->execute([$parent_id, $tid]);
-            }
-
             // Handle Recurrence
-            if ($recurrence != 'none' && !empty($recur_until)) {
-                $until_dt = new DateTime($recur_until);
-                $until_dt->setTime(23, 59, 59); // End of that day
+            if ($recurrence != 'none') {
+                // Insert into recurring_events
+                $recur_days_str = ($recurrence == 'weekly') ? implode(',', $recur_days) : '';
+                $end_date_val = ($recur_forever || empty($recur_until)) ? null : $recur_until;
 
-                // Reset start_dt to local for loop
-                $start_dt->setTimezone(new DateTimeZone('America/New_York'));
+                // Calculate duration in seconds
+                $duration = $end_dt->getTimestamp() - $start_dt->getTimestamp();
 
-                if ($recurrence == 'weekly' && !empty($recur_days)) {
-                    // Weekly with specific days
-                    $next_start = clone $start_dt;
-                    $next_start->modify('+1 day'); // Start checking from tomorrow (parent already created)
+                $sql_recur = "INSERT INTO recurring_events (event_name, start_time, duration, start_date, end_date, recurrence_type, recurrence_days, asset_id, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $stmt_recur = $pdo->prepare($sql_recur);
+                $stmt_recur->execute([
+                    $event_name,
+                    $start_time_val, // Store local time as string 'HH:MM' or 'HH:MM:SS'
+                    $duration,
+                    $start_date,
+                    $end_date_val,
+                    $recurrence,
+                    $recur_days_str,
+                    $asset_id,
+                    $priority
+                ]);
+                $recur_id = $pdo->lastInsertId();
 
-                    while ($next_start <= $until_dt) {
-                        // Check if current day is in selected days
-                        // 'w' returns 0 (Sun) to 6 (Sat)
-                        if (in_array($next_start->format('w'), $recur_days)) {
-                            $next_end = clone $next_start;
-                            $next_end->add(new DateInterval('PT' . $duration . 'S'));
+                // Insert Tags for Recurring Event
+                $stmt_ret = $pdo->prepare("INSERT INTO recurring_event_tags (recurring_event_id, tag_id) VALUES (?, ?)");
+                foreach ($selected_tag_ids as $tid) {
+                    $stmt_ret->execute([$recur_id, $tid]);
+                }
 
-                            $s_utc = $next_start->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-                            $e_utc = $next_end->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+            } else {
+                // One-time Event (Insert into events table)
+                $start_utc = $start_dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+                $end_utc = $end_dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-                            $stmt_recur = $pdo->prepare("INSERT INTO events (event_name, start_time, end_time, asset_id, priority, parent_event_id, tag_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                            $stmt_recur->execute([$event_name, $s_utc, $e_utc, $asset_id, $priority, $parent_id, $selected_tag_ids[0]]);
-                            $child_id = $pdo->lastInsertId();
+                $sql_event = "INSERT INTO events (event_name, start_time, end_time, asset_id, priority) VALUES (?, ?, ?, ?, ?)";
+                $stmt_event = $pdo->prepare($sql_event);
+                $stmt_event->execute([$event_name, $start_utc, $end_utc, $asset_id, $priority]);
+                $event_id = $pdo->lastInsertId();
 
-                            // Tags for child
-                            foreach ($selected_tag_ids as $tid) {
-                                $stmt_et->execute([$child_id, $tid]);
-                            }
-
-                            // Restore timezone
-                            $next_start->setTimezone(new DateTimeZone('America/New_York'));
-                        }
-                        $next_start->modify('+1 day');
-                    }
-                } else {
-                    // Daily or Simple Weekly (same day each week)
-                    $interval_spec = ($recurrence == 'daily') ? 'P1D' : 'P1W';
-                    $interval = new DateInterval($interval_spec);
-
-                    $next_start = clone $start_dt;
-                    $next_start->add($interval);
-
-                    while ($next_start <= $until_dt) {
-                        $next_end = clone $next_start;
-                        $next_end->add(new DateInterval('PT' . $duration . 'S'));
-
-                        $s_utc = $next_start->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-                        $e_utc = $next_end->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-
-                        $stmt_recur = $pdo->prepare("INSERT INTO events (event_name, start_time, end_time, asset_id, priority, parent_event_id) VALUES (?, ?, ?, ?, ?, ?)");
-                        $stmt_recur->execute([$event_name, $s_utc, $e_utc, $asset_id, $priority, $parent_id]);
-                        $child_id = $pdo->lastInsertId();
-
-                        // Tags for child
-                        foreach ($selected_tag_ids as $tid) {
-                            $stmt_et->execute([$child_id, $tid]);
-                        }
-
-                        // Restore timezone for next iteration logic
-                        $next_start->setTimezone(new DateTimeZone('America/New_York'));
-                        $next_start->add($interval);
-                    }
+                // Insert Tags
+                $stmt_et = $pdo->prepare("INSERT INTO event_tags (event_id, tag_id) VALUES (?, ?)");
+                foreach ($selected_tag_ids as $tid) {
+                    $stmt_et->execute([$event_id, $tid]);
                 }
             }
 

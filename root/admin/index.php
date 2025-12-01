@@ -120,6 +120,10 @@ foreach ($tags as $tag) {
     }
 }
 
+require_once 'includes/EventRepository.php';
+
+// ... (keep top part)
+
 // --- FILTERS & VIEWS ---
 $view = $_GET['view'] ?? 'list';
 $filter_tag = isset($_GET['tag_id']) && $_GET['tag_id'] !== '' ? (int) $_GET['tag_id'] : null;
@@ -128,172 +132,76 @@ $hide_past = isset($_GET['hide_past']) ? (bool) $_GET['hide_past'] : false;
 $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
 $per_page = 20;
 
-// Build Query
-$where_clauses = ["1=1"];
-$params = [];
-
-// Permission Filter
-$in_clause = implode(',', array_fill(0, count($allowed_tag_ids), '?'));
-// Query needs to join event_tags to filter
-$where_clauses[] = "et.tag_id IN ($in_clause)";
-$params = array_merge($params, $allowed_tag_ids);
-
-// User Filters
-if ($filter_tag) {
-    $where_clauses[] = "et.tag_id = ?";
-    $params[] = $filter_tag;
-}
-
-if ($hide_past) {
-    $now_utc_filter = (new DateTime())->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-    $where_clauses[] = "e.end_time > ?";
-    $params[] = $now_utc_filter;
-}
-
-// View Specific Logic
+$repo = new EventRepository($pdo);
 $events = [];
-$pagination = [];
+$total_pages = 1;
 
 if ($view == 'list') {
-    // Filter by date range if provided? Or just show all future/recent?
-    // Let's show all by default, sorted by start_time DESC
+    // Consolidated List View
+    // 1. Get Recurring Series
+    $series = $repo->getRecurringSeries($filter_tag);
 
-    // Count for pagination
-    $sql_count = "SELECT COUNT(DISTINCT e.id) FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses);
-    $stmt_count = $pdo->prepare($sql_count);
-    $stmt_count->execute($params);
-    $total_items = $stmt_count->fetchColumn();
+    // 2. Get Future One-Offs (and Exceptions)
+    // We want one-offs that are NOT exceptions to be shown normally.
+    // Exceptions should be shown? User said "Exceptions to recurring events (as separate entries)".
+    // So yes, fetch all future events.
+    $oneOffs = $repo->getFutureEvents($filter_tag);
+
+    // Merge: Series first, then One-Offs (sorted by start time)
+    // Actually, user might want them mixed by start date?
+    // Series have a start_date. One-offs have start_time.
+    // Let's put Series at the top (Active Recurring Series), then Future Events.
+    // Or just one big list sorted by date.
+    // "Consolidated list view to show only future one-off events, active recurring series, and exceptions."
+
+    // Let's combine and sort by start date/time.
+    $combined = [];
+    foreach ($series as $s) {
+        $s['type'] = 'series';
+        $s['sort_time'] = $s['start_date'] . ' ' . $s['start_time']; // approximate
+        $combined[] = $s;
+    }
+    foreach ($oneOffs as $e) {
+        $e['type'] = 'event';
+        $e['sort_time'] = $e['start_time'];
+        $combined[] = $e;
+    }
+
+    // Sort
+    usort($combined, function ($a, $b) {
+        return strcmp($a['sort_time'], $b['sort_time']);
+    });
+
+    // Pagination (PHP side)
+    $total_items = count($combined);
     $total_pages = ceil($total_items / $per_page);
     $offset = ($page - 1) * $per_page;
-
-    $sql = "SELECT DISTINCT e.*, a.filename_original 
-            FROM events e 
-            JOIN event_tags et ON e.id = et.event_id
-            JOIN assets a ON e.asset_id = a.id 
-            WHERE " . implode(" AND ", $where_clauses) . " 
-            ORDER BY e.start_time ASC 
-            LIMIT $per_page OFFSET $offset";
-
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // Resolve Schedule Conflicts
-    if (!empty($events)) {
-        $min_start = $events[0]['start_time'];
-        $max_end = $events[0]['end_time'];
-        $page_ids = [];
-        $page_tag_ids = [];
-
-        foreach ($events as $ev) {
-            if ($ev['start_time'] < $min_start)
-                $min_start = $ev['start_time'];
-            if ($ev['end_time'] > $max_end)
-                $max_end = $ev['end_time'];
-            $page_ids[] = $ev['id'];
-            $page_tag_ids[] = $ev['tag_id'];
-        }
-        $page_tag_ids = array_unique($page_tag_ids);
-
-        if (!empty($page_tag_ids)) {
-            $placeholders = implode(',', array_fill(0, count($page_tag_ids), '?'));
-            $not_in_ids = implode(',', $page_ids);
-
-            $ctx_events = [];
-            if ($filter_tag) {
-                // If filtering by tag, context events must be on that tag
-                $sql_ctx = "SELECT DISTINCT e.*, a.filename_original 
-                            FROM events e 
-                            JOIN event_tags et ON e.id = et.event_id
-                            JOIN assets a ON e.asset_id = a.id 
-                            WHERE et.tag_id = ?
-                            AND e.start_time < ? AND e.end_time > ?
-                            AND e.id NOT IN ($not_in_ids)";
-                $stmt_ctx = $pdo->prepare($sql_ctx);
-                $stmt_ctx->execute([$filter_tag, $max_end, $min_start]);
-                $ctx_events = $stmt_ctx->fetchAll(PDO::FETCH_ASSOC);
-
-                // Force tag_id to filter_tag for resolution
-                foreach ($events as &$ev)
-                    $ev['tag_id'] = $filter_tag;
-                foreach ($ctx_events as &$ev)
-                    $ev['tag_id'] = $filter_tag;
-                unset($ev);
-            } else {
-                // Default behavior: use primary tag_id
-                $sql_ctx = "SELECT e.*, a.filename_original 
-                            FROM events e 
-                            JOIN assets a ON e.asset_id = a.id 
-                            WHERE e.tag_id IN ($placeholders)
-                            AND e.start_time < ? AND e.end_time > ?
-                            AND e.id NOT IN ($not_in_ids)";
-                $stmt_ctx = $pdo->prepare($sql_ctx);
-                $params_ctx = array_merge($page_tag_ids, [$max_end, $min_start]);
-                $stmt_ctx->execute($params_ctx);
-                $ctx_events = $stmt_ctx->fetchAll(PDO::FETCH_ASSOC);
-            }
-
-            $all_relevant = array_merge($events, $ctx_events);
-
-            // DEBUG LOGGING
-            file_put_contents('debug_log.txt', "--- PAGE LOAD ---\n", FILE_APPEND);
-            file_put_contents('debug_log.txt', "Events on page: " . count($events) . "\n", FILE_APPEND);
-            file_put_contents('debug_log.txt', "Context events: " . count($ctx_events) . "\n", FILE_APPEND);
-            file_put_contents('debug_log.txt', "Filter Tag: " . ($filter_tag ? $filter_tag : 'None') . "\n", FILE_APPEND);
-
-            foreach ($all_relevant as $e) {
-                file_put_contents('debug_log.txt', "INPUT: ID {$e['id']} Prio {$e['priority']} Tag {$e['tag_id']} {$e['start_time']} - {$e['end_time']}\n", FILE_APPEND);
-            }
-
-            $resolved = ScheduleLogic::resolveSchedule($all_relevant);
-
-            foreach ($resolved as $e) {
-                $mod = !empty($e['is_modified']) ? '[MODIFIED]' : '';
-                file_put_contents('debug_log.txt', "OUTPUT: ID {$e['id']} Prio {$e['priority']} Tag {$e['tag_id']} {$e['start_time']} - {$e['end_time']} $mod\n", FILE_APPEND);
-            }
-
-            // Filter back to page events
-            $final_events = [];
-            foreach ($resolved as $r) {
-                if (in_array($r['id'], $page_ids)) {
-                    $final_events[] = $r;
-                }
-            }
-            $events = $final_events;
-        }
-    }
+    $events = array_slice($combined, $offset, $per_page);
 
 } elseif ($view == 'month') {
     $start_month = date('Y-m-01', strtotime($filter_date));
     $end_month = date('Y-m-t', strtotime($filter_date));
 
+    // Expand range slightly to cover full weeks if needed, but strict month is fine for now
+    // UTC conversion happens inside getEvents if we pass local dates? 
+    // EventRepository expects Y-m-d H:i:s strings.
+    // Let's pass full UTC range for the month.
+
     $start_utc = (new DateTime($start_month . ' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
     $end_utc = (new DateTime($end_month . ' 23:59:59'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-    $where_clauses[] = "e.start_time < ? AND e.end_time > ?";
-    $params[] = $end_utc;
-    $params[] = $start_utc;
-
-    $sql = "SELECT DISTINCT e.* FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $raw_events = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $raw_events = $repo->getEvents($start_utc, $end_utc, $filter_tag);
 
     // Resolve Schedule
-    if ($filter_tag) {
-        foreach ($raw_events as &$ev)
-            $ev['tag_id'] = $filter_tag;
-        unset($ev);
-    }
-    $raw_events = ScheduleLogic::resolveSchedule($raw_events);
+    $resolved = ScheduleLogic::resolveSchedule($raw_events);
 
-    // Group by day (handling spans)
+    // Group by day
     $month_start_ts = strtotime($start_month);
     $year = date('Y', $month_start_ts);
     $month = date('m', $month_start_ts);
     $days_in_month = date('t', $month_start_ts);
 
-    foreach ($raw_events as $ev) {
+    foreach ($resolved as $ev) {
         $ev_start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
         $ev_end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
 
@@ -309,9 +217,7 @@ if ($view == 'list') {
     }
 
 } elseif ($view == 'week') {
-    // Calculate start (Sun) and end (Sat) of week for $filter_date
     $dt = new DateTime($filter_date);
-    // If today is Sunday (0), we are at start. If not, go back to last Sunday.
     if ($dt->format('w') != 0) {
         $dt->modify('last sunday');
     }
@@ -322,24 +228,10 @@ if ($view == 'list') {
     $start_utc = (new DateTime($start_week . ' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
     $end_utc = (new DateTime($end_week . ' 23:59:59'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-    $where_clauses[] = "e.start_time < ? AND e.end_time > ?";
-    $params[] = $end_utc;
-    $params[] = $start_utc;
+    $raw_events = $repo->getEvents($start_utc, $end_utc, $filter_tag);
+    $resolved = ScheduleLogic::resolveSchedule($raw_events);
 
-    $sql = "SELECT DISTINCT e.* FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $raw_events = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // Resolve Schedule
-    if ($filter_tag) {
-        foreach ($raw_events as &$ev)
-            $ev['tag_id'] = $filter_tag;
-        unset($ev);
-    }
-    $raw_events = ScheduleLogic::resolveSchedule($raw_events);
-
-    // Group by Date (Y-m-d)
+    // Group by Date
     $week_dates = [];
     $dt = new DateTime($start_week);
     for ($i = 0; $i < 7; $i++) {
@@ -347,7 +239,7 @@ if ($view == 'list') {
         $dt->modify('+1 day');
     }
 
-    foreach ($raw_events as $ev) {
+    foreach ($resolved as $ev) {
         $ev_start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
         $ev_end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
 
@@ -361,26 +253,13 @@ if ($view == 'list') {
             }
         }
     }
+
 } elseif ($view == 'day') {
     $start_utc = (new DateTime($filter_date . ' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
     $end_utc = (new DateTime($filter_date . ' 23:59:59'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-    $where_clauses[] = "e.start_time < ? AND e.end_time > ?";
-    $params[] = $end_utc;
-    $params[] = $start_utc;
-
-    $sql = "SELECT DISTINCT e.*, a.filename_original FROM events e JOIN event_tags et ON e.id = et.event_id JOIN assets a ON e.asset_id = a.id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // Resolve Schedule
-    if ($filter_tag) {
-        foreach ($events as &$ev)
-            $ev['tag_id'] = $filter_tag;
-        unset($ev);
-    }
-    $events = ScheduleLogic::resolveSchedule($events);
+    $raw_events = $repo->getEvents($start_utc, $end_utc, $filter_tag);
+    $events = ScheduleLogic::resolveSchedule($raw_events);
 }
 
 ?>
@@ -527,19 +406,68 @@ if ($view == 'list') {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($events as $ev):
-                        $start = new DateTime($ev['start_time'], new DateTimeZone('UTC'));
-                        $end = new DateTime($ev['end_time'], new DateTimeZone('UTC'));
-                        $now = new DateTime(null, new DateTimeZone('UTC'));
+                <tbody>
+                    <?php foreach ($events as $ev): 
+                        $is_series = isset($ev['type']) && $ev['type'] == 'series';
+                        $is_exception = !empty($ev['is_exception']);
+                        
+                        if ($is_series) {
+                            $status = 'Recurring';
+                            $status_color = 'var(--accent-color)';
+                            $start_display = 'Starts: ' . $ev['start_date'];
+                            
+                            // Recurrence Pattern
+                            $recur_info = ucfirst($ev['recurrence_type']);
+                            if ($ev['recurrence_type'] == 'weekly' && !empty($ev['recurrence_days'])) {
+                                $days_map = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                                $days = explode(',', $ev['recurrence_days']);
+                                $day_names = array_map(function($d) use ($days_map) { return $days_map[$d]; }, $days);
+                                $recur_info .= ' (' . implode(', ', $day_names) . ')';
+                            }
+                            $end_display = $recur_info . '<br>Time: ' . $ev['start_time'];
+                            
+                            $edit_link = "edit_event.php?id=recur_" . $ev['id'] . "_0"; // 0 timestamp for series edit? Or just recur_ID
+                            // Actually edit_event expects recur_{id}_{timestamp} for instances.
+                            // But for editing the SERIES definition, we might need a different way or just pick a dummy timestamp.
+                            // Let's pass a special flag or just handle it in edit_event.
+                            // Wait, edit_event logic I wrote expects `recur_ID_timestamp`.
+                            // If I want to edit the series *definition*, I should probably link to an instance or handle "recur_ID" without timestamp.
+                            // Let's update edit_event to handle "recur_ID" without timestamp later if needed, 
+                            // but for now let's link to the NEXT instance? 
+                            // Or just link to "recur_{id}_0" and handle 0 in edit_event as "Series Edit Mode".
+                            // For now, let's use a dummy timestamp 0.
+                            $edit_link = "edit_event.php?id=recur_" . $ev['id'] . "_0&" . http_build_query($_GET);
 
-                        $status = 'Future';
-                        $status_color = '#aaa';
-                        if ($end < $now) {
-                            $status = 'Past';
-                            $status_color = '#555';
-                        } elseif ($start <= $now && $end > $now) {
-                            $status = 'Live';
-                            $status_color = 'var(--error-color)';
+                        } else {
+                            // One-off / Exception
+                            $start = new DateTime($ev['start_time'], new DateTimeZone('UTC'));
+                            $end = new DateTime($ev['end_time'], new DateTimeZone('UTC'));
+                            $now = new DateTime(null, new DateTimeZone('UTC'));
+
+                            $status = 'Future';
+                            $status_color = '#aaa';
+                            if ($end < $now) {
+                                $status = 'Past';
+                                $status_color = '#555';
+                            } elseif ($start <= $now && $end > $now) {
+                                $status = 'Live';
+                                $status_color = 'var(--error-color)';
+                            }
+                            
+                            if ($is_exception) {
+                                $status = 'Exception';
+                                $status_color = 'orange';
+                            }
+                            
+                            $start_local = $start->setTimezone(new DateTimeZone('America/New_York'));
+                            $format = ($start_local->format('Y') != date('Y')) ? 'M j, Y, g:i A' : 'M j, g:i A';
+                            $start_display = $start_local->format($format);
+                            
+                            $end_local = $end->setTimezone(new DateTimeZone('America/New_York'));
+                            $format = ($end_local->format('Y') != date('Y')) ? 'M j, Y, g:i A' : 'M j, g:i A';
+                            $end_display = $end_local->format($format);
+                            
+                            $edit_link = "edit_event.php?id=" . $ev['id'] . "&" . http_build_query($_GET);
                         }
                         ?>
                         <tr>
@@ -565,38 +493,32 @@ if ($view == 'list') {
                             </td>
                             <td>
                                 <?php
-                                $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
-                                $stmt_t->execute([$ev['id']]);
-                                $tag_names = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
-                                echo htmlspecialchars(implode(', ', $tag_names));
+                                // Tags might be pre-fetched in 'tag_names' for series/one-offs by Repository
+                                if (isset($ev['tag_names'])) {
+                                    echo htmlspecialchars($ev['tag_names']);
+                                } else {
+                                    // Fallback query
+                                    $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
+                                    $stmt_t->execute([$ev['id']]);
+                                    $tag_names = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
+                                    echo htmlspecialchars(implode(', ', $tag_names));
+                                }
                                 ?>
                             </td>
+                            <td><?php echo $start_display; ?></td>
+                            <td><?php echo $end_display; ?></td>
+                            <td><?php echo htmlspecialchars($ev['filename_original'] ?? 'N/A'); ?></td>
                             <td>
-                                <?php
-                                $start_local = $start->setTimezone(new DateTimeZone('America/New_York'));
-                                $format = ($start_local->format('Y') != date('Y')) ? 'M j, Y, g:i A' : 'M j, g:i A';
-                                echo $start_local->format($format);
-                                ?>
-                            </td>
-                            <td>
-                                <?php
-                                $end_local = $end->setTimezone(new DateTimeZone('America/New_York'));
-                                $format = ($end_local->format('Y') != date('Y')) ? 'M j, Y, g:i A' : 'M j, g:i A';
-                                echo $end_local->format($format);
-                                ?>
-                            </td>
-                            <td><?php echo htmlspecialchars($ev['filename_original']); ?></td>
-                            <td>
-                                <a href="edit_event.php?id=<?php echo $ev['id']; ?>&<?php echo http_build_query($_GET); ?>"
-                                    class="btn btn-sm btn-secondary">Edit</a>
-                                <?php if ($status != 'Live'): ?>
+                                <a href="<?php echo $edit_link; ?>" class="btn btn-sm btn-secondary">Edit</a>
+                                
+                                <?php if (!$is_series && $status != 'Live'): ?>
                                     <form method="POST" style="display:inline;" onsubmit="return confirm('Delete?');">
                                         <input type="hidden" name="action" value="delete_event">
                                         <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
                                         <button type="submit"
                                             style="background:none; border:none; color:var(--error-color); cursor:pointer; padding:0;">Delete</button>
                                     </form>
-                                <?php else: ?>
+                                <?php elseif ($status == 'Live'): ?>
                                     <form method="POST" style="display:inline;" onsubmit="return confirm('End this event now?');">
                                         <input type="hidden" name="action" value="end_now">
                                         <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">

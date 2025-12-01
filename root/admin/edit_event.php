@@ -8,25 +8,68 @@ if (!isset($_GET['id'])) {
     exit;
 }
 
-$event_id = (int) $_GET['id'];
+$event_id_param = $_GET['id'];
+$event = null;
+$is_generated = false;
 
-// Fetch Event
-$stmt = $pdo->prepare("SELECT * FROM events WHERE id = ?");
-$stmt->execute([$event_id]);
-$event = $stmt->fetch(PDO::FETCH_ASSOC);
+if (strpos($event_id_param, 'recur_') === 0) {
+    // Generated Instance: recur_{id}_{timestamp}
+    $parts = explode('_', $event_id_param);
+    $recur_id = (int) $parts[1];
+    $ts = (int) $parts[2];
+
+    $stmt = $pdo->prepare("SELECT * FROM recurring_events WHERE id = ?");
+    $stmt->execute([$recur_id]);
+    $recur_row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($recur_row) {
+        $is_generated = true;
+        // Construct fake event
+        $start_dt = new DateTime('@' . $ts); // UTC timestamp
+        $start_dt->setTimezone(new DateTimeZone('UTC'));
+
+        $end_dt = clone $start_dt;
+        $end_dt->modify("+{$recur_row['duration']} seconds");
+
+        $event = [
+            'id' => $event_id_param, // Keep the string ID
+            'event_name' => $recur_row['event_name'],
+            'start_time' => $start_dt->format('Y-m-d H:i:s'),
+            'end_time' => $end_dt->format('Y-m-d H:i:s'),
+            'asset_id' => $recur_row['asset_id'],
+            'priority' => $recur_row['priority'],
+            'recurring_event_id' => $recur_id,
+            'parent_event_id' => null, // It's a series itself
+            'tag_id' => null // Will fetch tags below
+        ];
+
+        // Fetch Tags for Recurring
+        $stmt_tags = $pdo->prepare("SELECT tag_id FROM recurring_event_tags WHERE recurring_event_id = ?");
+        $stmt_tags->execute([$recur_id]);
+        $current_tag_ids = $stmt_tags->fetchAll(PDO::FETCH_COLUMN);
+    }
+} else {
+    // Standard Event
+    $event_id = (int) $event_id_param;
+    $stmt = $pdo->prepare("SELECT * FROM events WHERE id = ?");
+    $stmt->execute([$event_id]);
+    $event = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($event) {
+        // Fetch Current Tags
+        $stmt_tags = $pdo->prepare("SELECT tag_id FROM event_tags WHERE event_id = ?");
+        $stmt_tags->execute([$event_id]);
+        $current_tag_ids = $stmt_tags->fetchAll(PDO::FETCH_COLUMN);
+
+        // Fallback for legacy
+        if (empty($current_tag_ids) && $event['tag_id']) {
+            $current_tag_ids[] = $event['tag_id'];
+        }
+    }
+}
 
 if (!$event) {
     die("Event not found.");
-}
-
-// Fetch Current Tags
-$stmt_tags = $pdo->prepare("SELECT tag_id FROM event_tags WHERE event_id = ?");
-$stmt_tags->execute([$event_id]);
-$current_tag_ids = $stmt_tags->fetchAll(PDO::FETCH_COLUMN);
-
-// Fallback for legacy
-if (empty($current_tag_ids) && $event['tag_id']) {
-    $current_tag_ids[] = $event['tag_id'];
 }
 
 // Check Permission
@@ -59,16 +102,21 @@ if (!$has_permission) {
 
 // Check if Series
 $is_series = false;
-$parent_id = $event['parent_event_id'];
-if ($parent_id) {
+if ($is_generated || !empty($event['recurring_event_id'])) {
     $is_series = true;
 } else {
-    // Check if I am a parent
-    $stmt_children = $pdo->prepare("SELECT COUNT(*) FROM events WHERE parent_event_id = ?");
-    $stmt_children->execute([$event_id]);
-    if ($stmt_children->fetchColumn() > 0) {
+    // Check legacy parent/child (should be rare now if we migrate, but keep for safety)
+    if (!empty($event['parent_event_id'])) {
         $is_series = true;
-        $parent_id = $event_id; // I am the parent
+        $parent_id = $event['parent_event_id'];
+    } else {
+        // Check if I am a parent (legacy)
+        $stmt_children = $pdo->prepare("SELECT COUNT(*) FROM events WHERE parent_event_id = ?");
+        $stmt_children->execute([isset($event['id']) && is_numeric($event['id']) ? $event['id'] : 0]);
+        if ($stmt_children->fetchColumn() > 0) {
+            $is_series = true;
+            $parent_id = $event['id'];
+        }
     }
 }
 
@@ -113,83 +161,102 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
             $start_utc = $start_dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
             $end_utc = $end_dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-            // Calculate Deltas (in seconds)
-            $old_start_ts = (new DateTime($event['start_time'], new DateTimeZone('UTC')))->getTimestamp();
-            $old_end_ts = (new DateTime($event['end_time'], new DateTimeZone('UTC')))->getTimestamp();
-            $new_start_ts = (new DateTime($start_utc, new DateTimeZone('UTC')))->getTimestamp();
-            $new_end_ts = (new DateTime($end_utc, new DateTimeZone('UTC')))->getTimestamp();
+            if ($is_series) {
+                // RECURRING EVENT UPDATE
+                $recur_id = $event['recurring_event_id'];
 
-            $delta_start = $new_start_ts - $old_start_ts;
-            $delta_end = $new_end_ts - $old_end_ts;
+                if ($update_scope == 'only_this') {
+                    // Create Exception
+                    // 1. Insert into events table with is_exception=1
+                    // We need to know the ORIGINAL start time of the instance we are replacing to suppress it.
+                    // The $event['start_time'] passed from GET should be the generated start time.
+                    // BUT wait, if we are editing a generated instance, we don't have a row in `events` yet.
+                    // The GET logic at the top needs to handle fetching generated events.
+                    // Assuming GET logic is updated (I need to update it next), $event will have 'start_time' of the instance.
 
-            $targets = [];
-            if ($update_scope == 'only_this' || !$is_series) {
-                $targets[] = $event_id;
-            } elseif ($update_scope == 'all') {
-                // All in series: Parent + Children
-                // If I am parent, parent_id is me. If I am child, parent_id is my parent.
-                // Wait, $parent_id variable set above is correct.
-                $stmt_ids = $pdo->prepare("SELECT id FROM events WHERE id = ? OR parent_event_id = ?");
-                $stmt_ids->execute([$parent_id, $parent_id]);
-                $targets = $stmt_ids->fetchAll(PDO::FETCH_COLUMN);
-            } elseif ($update_scope == 'future') {
-                // This and future (based on start time)
-                // We use the ORIGINAL start time to find "future" events relative to this one
-                $stmt_ids = $pdo->prepare("SELECT id FROM events WHERE (id = ? OR parent_event_id = ?) AND start_time >= ?");
-                $stmt_ids->execute([$parent_id, $parent_id, $event['start_time']]);
-                $targets = $stmt_ids->fetchAll(PDO::FETCH_COLUMN);
-            }
+                    $original_start = $event['start_time']; // This is the time of the instance we clicked
 
-            foreach ($targets as $tid) {
-                // Apply Delta to times
+                    $sql_ex = "INSERT INTO events (event_name, start_time, end_time, asset_id, priority, recurring_event_id, original_start_time, is_exception) VALUES (?, ?, ?, ?, ?, ?, ?, 1)";
+                    $stmt_ex = $pdo->prepare($sql_ex);
+                    $stmt_ex->execute([$event_name, $start_utc, $end_utc, $asset_id, $priority, $recur_id, $original_start]);
+                    $new_event_id = $pdo->lastInsertId();
+
+                    // Tags
+                    $stmt_et = $pdo->prepare("INSERT INTO event_tags (event_id, tag_id) VALUES (?, ?)");
+                    foreach ($selected_tag_ids as $tid) {
+                        $stmt_et->execute([$new_event_id, $tid]);
+                    }
+
+                } elseif ($update_scope == 'future') {
+                    // Split Series
+                    // 1. End current series at yesterday (or just before this event)
+                    // We set end_date of the recurring_event to $start_date - 1 day
+                    $split_date = new DateTime($start_date);
+                    $split_date->modify('-1 day');
+                    $new_end_date = $split_date->format('Y-m-d');
+
+                    $stmt_upd = $pdo->prepare("UPDATE recurring_events SET end_date = ? WHERE id = ?");
+                    $stmt_upd->execute([$new_end_date, $recur_id]);
+
+                    // 2. Create NEW recurring series starting today
+                    // Fetch original series to copy recurrence rules
+                    $stmt_orig = $pdo->prepare("SELECT * FROM recurring_events WHERE id = ?");
+                    $stmt_orig->execute([$recur_id]);
+                    $orig = $stmt_orig->fetch(PDO::FETCH_ASSOC);
+
+                    $duration = $end_dt->getTimestamp() - $start_dt->getTimestamp();
+
+                    $sql_new = "INSERT INTO recurring_events (event_name, start_time, duration, start_date, end_date, recurrence_type, recurrence_days, asset_id, priority, parent_event_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    $stmt_new = $pdo->prepare($sql_new);
+                    $stmt_new->execute([
+                        $event_name,
+                        $start_time_val,
+                        $duration,
+                        $start_date, // Starts today
+                        null, // Forever (or copy original end date if it had one? Assume forever for new leg)
+                        $orig['recurrence_type'],
+                        $orig['recurrence_days'],
+                        $asset_id,
+                        $priority,
+                        $recur_id // Link to old series
+                    ]);
+                    $new_recur_id = $pdo->lastInsertId();
+
+                    // Tags
+                    $stmt_ret = $pdo->prepare("INSERT INTO recurring_event_tags (recurring_event_id, tag_id) VALUES (?, ?)");
+                    foreach ($selected_tag_ids as $tid) {
+                        $stmt_ret->execute([$new_recur_id, $tid]);
+                    }
+                }
+
+            } else {
+                // ONE-OFF EVENT UPDATE (Standard)
                 $sql_upd = "UPDATE events SET 
                             event_name = ?, 
                             asset_id = ?, 
                             priority = ?,
-                            start_time = DATE_ADD(start_time, INTERVAL ? SECOND),
-                            end_time = DATE_ADD(end_time, INTERVAL ? SECOND)
+                            start_time = ?,
+                            end_time = ?
                             WHERE id = ?";
                 $stmt_upd = $pdo->prepare($sql_upd);
-                $stmt_upd->execute([$event_name, $asset_id, $priority, $delta_start, $delta_end, $tid]);
+                $stmt_upd->execute([$event_name, $asset_id, $priority, $start_utc, $end_utc, $event_id]);
 
-                // Update Tags for each target
-                $pdo->prepare("DELETE FROM event_tags WHERE event_id = ?")->execute([$tid]);
+                // Update Tags
+                $pdo->prepare("DELETE FROM event_tags WHERE event_id = ?")->execute([$event_id]);
                 $stmt_et = $pdo->prepare("INSERT INTO event_tags (event_id, tag_id) VALUES (?, ?)");
                 foreach ($selected_tag_ids as $tag_id) {
-                    $stmt_et->execute([$tid, $tag_id]);
+                    $stmt_et->execute([$event_id, $tag_id]);
                 }
             }
 
-            // Handle End Series Date
-            if ($is_series && !empty($_POST['end_series_date'])) {
-                $end_series_date = $_POST['end_series_date'];
-                $end_dt = new DateTime($end_series_date);
-                $end_dt->setTime(23, 59, 59);
-                $cutoff_utc = $end_dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-
-                $stmt_del_future = $pdo->prepare("DELETE FROM events WHERE (parent_event_id = ? OR id = ?) AND start_time > ?");
-                $stmt_del_future->execute([$parent_id, $parent_id, $cutoff_utc]);
-            }
-
             $pdo->commit();
-            $success_message = "Event(s) updated successfully.";
+            $success_message = "Event updated successfully.";
 
         } catch (Exception $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             $errors[] = "Database Error: " . $e->getMessage();
-        }
-
-        if (empty($errors)) {
-            // Refresh event data (outside transaction)
-            $stmt = $pdo->prepare("SELECT * FROM events WHERE id = ?");
-            $stmt->execute([$event_id]);
-            $event = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            // Refresh tags
-            $stmt_tags->execute([$event_id]);
-            $current_tag_ids = $stmt_tags->fetchAll(PDO::FETCH_COLUMN);
         }
     }
 }
@@ -201,29 +268,32 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
     try {
         $pdo->beginTransaction();
 
-        if ($update_scope == 'only_this' || !$is_series) {
-            // If deleting parent, promote next child
-            if ($event['id'] == $parent_id) {
-                // Find next child
-                $stmt_next = $pdo->prepare("SELECT id FROM events WHERE parent_event_id = ? ORDER BY start_time ASC LIMIT 1");
-                $stmt_next->execute([$parent_id]);
-                $next_child = $stmt_next->fetch(PDO::FETCH_ASSOC);
+        if ($is_series) {
+            $recur_id = $event['recurring_event_id'];
 
-                if ($next_child) {
-                    $new_parent_id = $next_child['id'];
-                    // Promote new parent
-                    $pdo->prepare("UPDATE events SET parent_event_id = NULL WHERE id = ?")->execute([$new_parent_id]);
-                    // Point others to new parent
-                    $pdo->prepare("UPDATE events SET parent_event_id = ? WHERE parent_event_id = ?")->execute([$new_parent_id, $parent_id]);
-                }
+            if ($update_scope == 'future' || $update_scope == 'all') {
+                // End Series
+                // If 'future', set end date to yesterday.
+                // If 'all', well, we can't delete past history easily without breaking audit.
+                // So 'delete' for a series really just means "Stop it now".
+
+                // Determine end date
+                // If deleting "this instance", we can't really.
+                // If deleting "future", we set end date to yesterday.
+
+                $start_date = (new DateTime($event['start_time']))->format('Y-m-d');
+                $split_date = new DateTime($start_date);
+                $split_date->modify('-1 day');
+                $new_end_date = $split_date->format('Y-m-d');
+
+                $stmt_upd = $pdo->prepare("UPDATE recurring_events SET end_date = ? WHERE id = ?");
+                $stmt_upd->execute([$new_end_date, $recur_id]);
             }
+            // 'only_this' delete not supported for recurring, maybe show error or disable button?
+
+        } else {
+            // One-off delete
             $pdo->prepare("DELETE FROM events WHERE id = ?")->execute([$event_id]);
-
-        } elseif ($update_scope == 'all') {
-            $pdo->prepare("DELETE FROM events WHERE id = ? OR parent_event_id = ?")->execute([$parent_id, $parent_id]);
-
-        } elseif ($update_scope == 'future') {
-            $pdo->prepare("DELETE FROM events WHERE (id = ? OR parent_event_id = ?) AND start_time >= ?")->execute([$parent_id, $parent_id, $event['start_time']]);
         }
 
         $pdo->commit();

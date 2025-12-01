@@ -3,6 +3,8 @@
 require_once '../db_connect.php';
 date_default_timezone_set('America/New_York');
 
+require_once '../admin/includes/EventRepository.php';
+
 // 1. Get the requested tag from the URL
 $tag_name = $_GET['tag'] ?? '';
 if (empty($tag_name)) {
@@ -10,52 +12,43 @@ if (empty($tag_name)) {
     die('ERROR: Tag parameter is missing.');
 }
 
-// 2. Get the current time in UTC (Database stores times in UTC)
-$now_utc = (new DateTime())->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-
-// 3. Find an *active, scheduled event* for this tag
-// Logic matches dashboard: Priority DESC, Start Time ASC
-$sql = "
-    SELECT a.filename_disk, a.mime_type, a.md5_hash, a.filename_original
-    FROM events e
-    JOIN event_tags et ON e.id = et.event_id
-    JOIN assets a ON e.asset_id = a.id
-    JOIN tags t ON et.tag_id = t.id
-    WHERE t.tag_name = ? 
-      AND e.start_time <= ? AND e.end_time > ?
-    ORDER BY e.priority DESC, e.start_time ASC 
-    LIMIT 1
-";
-$stmt = $pdo->prepare($sql);
-$stmt->execute([$tag_name, $now_utc, $now_utc]);
-$active_event_asset = $stmt->fetch(PDO::FETCH_ASSOC);
-
+$repo = new EventRepository($pdo);
 
 // Initialize variables
 $asset_to_serve = null;
 $target_asset_type = isset($_REQUEST['next']) ? 'next' : 'current';
 
 if ($target_asset_type === 'next') {
-    // Logic to find the *next scheduled asset* for this tag.
-    // This logic wasn't explicitly requested to match dashboard (dashboard doesn't show 'next'), 
-    // but we should update it to use UTC and Priority if applicable, or just Start Time.
-    // Usually 'next' means the one starting soonest after now.
+    // Get Tag ID
+    $stmt_tag = $pdo->prepare("SELECT id FROM tags WHERE tag_name = ?");
+    $stmt_tag->execute([$tag_name]);
+    $tag_id = $stmt_tag->fetchColumn();
 
-    $sql_target = "
-        SELECT a.filename_disk, a.mime_type, a.md5_hash, a.filename_original
-        FROM events se
-        JOIN event_tags et ON se.id = et.event_id
-        JOIN assets a ON se.asset_id = a.id
-        JOIN tags t ON et.tag_id = t.id
-        WHERE t.tag_name = ? AND se.start_time > ?
-        ORDER BY se.start_time ASC
-        LIMIT 1
-    ";
-    $stmt_target = $pdo->prepare($sql_target);
-    $stmt_target->execute([$tag_name, $now_utc]);
-    $asset_to_serve = $stmt_target->fetch(PDO::FETCH_ASSOC);
+    if ($tag_id) {
+        $now_utc = gmdate('Y-m-d H:i:s');
+        $future_utc = gmdate('Y-m-d H:i:s', strtotime('+1 year'));
 
-    // If no future event is found, fall back to the default asset
+        // Get all events starting from now
+        $events = $repo->getEvents($now_utc, $future_utc, $tag_id);
+
+        // Filter for start_time > now (getEvents includes overlaps, so might include current)
+        $next_event = null;
+        foreach ($events as $ev) {
+            if ($ev['start_time'] > $now_utc) {
+                $next_event = $ev;
+                break; // Events are sorted by start time
+            }
+        }
+
+        if ($next_event) {
+            // Fetch asset details
+            $stmt_a = $pdo->prepare("SELECT filename_disk, mime_type, md5_hash, filename_original FROM assets WHERE id = ?");
+            $stmt_a->execute([$next_event['asset_id']]);
+            $asset_to_serve = $stmt_a->fetch(PDO::FETCH_ASSOC);
+        }
+    }
+
+    // Default fallback
     if (!$asset_to_serve) {
         $sql_default = "
             SELECT a.filename_disk, a.mime_type, a.md5_hash, a.filename_original
@@ -70,22 +63,23 @@ if ($target_asset_type === 'next') {
     }
 
 } else {
-    // Logic to find the *current active or default asset*.
+    // Current
+    $active_event = $repo->getCurrentEvent($tag_name);
 
-    if ($active_event_asset) {
-        $asset_to_serve = $active_event_asset;
+    if ($active_event) {
+        $asset_to_serve = $active_event; // getCurrentEvent returns asset details
     } else {
-        // If no active event, find the *default asset* for this tag.
-        $sql_target = "
+        // Default
+        $sql_default = "
             SELECT a.filename_disk, a.mime_type, a.md5_hash, a.filename_original
             FROM default_assets da
             JOIN assets a ON da.asset_id = a.id
             JOIN tags t ON da.tag_id = t.id
             WHERE t.tag_name = ?
         ";
-        $stmt_target = $pdo->prepare($sql_target);
-        $stmt_target->execute([$tag_name]);
-        $asset_to_serve = $stmt_target->fetch(PDO::FETCH_ASSOC);
+        $stmt_default = $pdo->prepare($sql_default);
+        $stmt_default->execute([$tag_name]);
+        $asset_to_serve = $stmt_default->fetch(PDO::FETCH_ASSOC);
     }
 }
 
