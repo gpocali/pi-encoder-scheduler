@@ -63,6 +63,12 @@ if ($return_var !== 0) {
 // Parse XML using Regex (fallback since simplexml might be missing)
 $xml_string = implode("\n", $output);
 
+// Debug logging
+error_log("RRDTool Output Length: " . strlen($xml_string));
+if (strlen($xml_string) < 100) {
+    error_log("RRDTool Output Snippet: " . $xml_string);
+}
+
 $labels = [];
 $datasets = [];
 
@@ -75,29 +81,34 @@ foreach ($legends as $index => $legend) {
 }
 
 // Regex to find rows: <row><t>TIMESTAMP</t><v>VALUE</v><v>VALUE</v>...</row>
-if (preg_match_all('/<row>(.*?)<\/row>/s', $xml_string, $row_matches)) {
-    foreach ($row_matches[1] as $row_content) {
-        // Extract timestamp
-        if (preg_match('/<t>(\d+)<\/t>/', $row_content, $t_match)) {
-            $t = (int) $t_match[1];
-            $labels[] = $t * 1000;
+// Updated to be more permissive with whitespace
+if (preg_match_all('/<row>\s*<t>\s*(\d+)\s*<\/t>(.*?)<\/row>/si', $xml_string, $row_matches, PREG_SET_ORDER)) {
+    error_log("Found " . count($row_matches) . " rows.");
 
-            // Extract values
-            if (preg_match_all('/<v>(.*?)<\/v>/', $row_content, $v_matches)) {
-                foreach ($v_matches[1] as $i => $val) {
-                    if ($val === 'NaN') {
-                        $v = null;
-                    } else {
-                        $v = (float) $val;
-                    }
+    foreach ($row_matches as $match) {
+        $t = (int) $match[1];
+        $labels[] = $t * 1000;
+        $values_str = $match[2];
 
-                    if (isset($datasets[$i])) {
-                        $datasets[$i]['data'][] = $v;
-                    }
+        // Extract values
+        if (preg_match_all('/<v>\s*(.*?)\s*<\/v>/i', $values_str, $v_matches)) {
+            foreach ($v_matches[1] as $i => $val) {
+                if (strcasecmp($val, 'NaN') === 0) {
+                    $v = null;
+                } else {
+                    $v = (float) $val;
+                }
+
+                if (isset($datasets[$i])) {
+                    $datasets[$i]['data'][] = $v;
                 }
             }
         }
     }
+} else {
+    error_log("No rows matched regex in RRDTool output.");
+    // Log a snippet of the XML to see what it looks like
+    error_log("XML Snippet: " . substr($xml_string, 0, 500));
 }
 
 echo json_encode([
