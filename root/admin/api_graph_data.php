@@ -60,16 +60,8 @@ if ($return_var !== 0) {
     exit;
 }
 
-// Parse XML
+// Parse XML using Regex (fallback since simplexml might be missing)
 $xml_string = implode("\n", $output);
-// Suppress warnings for invalid XML just in case
-libxml_use_internal_errors(true);
-$xml = simplexml_load_string($xml_string);
-
-if ($xml === false) {
-    echo json_encode(['error' => 'Failed to parse XML']);
-    exit;
-}
 
 $labels = [];
 $datasets = [];
@@ -79,27 +71,31 @@ foreach ($legends as $index => $legend) {
     $datasets[$index] = [
         'label' => $legend,
         'data' => [],
-        // We don't set style here, frontend will handle it
     ];
 }
 
-if (isset($xml->data->row)) {
-    foreach ($xml->data->row as $row) {
-        $t = (string) $row->t;
-        $labels[] = (int) $t * 1000; // JS timestamp
+// Regex to find rows: <row><t>TIMESTAMP</t><v>VALUE</v><v>VALUE</v>...</row>
+if (preg_match_all('/<row>(.*?)<\/row>/s', $xml_string, $row_matches)) {
+    foreach ($row_matches[1] as $row_content) {
+        // Extract timestamp
+        if (preg_match('/<t>(\d+)<\/t>/', $row_content, $t_match)) {
+            $t = (int) $t_match[1];
+            $labels[] = $t * 1000;
 
-        $i = 0;
-        foreach ($row->v as $val) {
-            $v = (string) $val;
-            if ($v === 'NaN')
-                $v = null;
-            else
-                $v = (float) $v;
+            // Extract values
+            if (preg_match_all('/<v>(.*?)<\/v>/', $row_content, $v_matches)) {
+                foreach ($v_matches[1] as $i => $val) {
+                    if ($val === 'NaN') {
+                        $v = null;
+                    } else {
+                        $v = (float) $val;
+                    }
 
-            if (isset($datasets[$i])) {
-                $datasets[$i]['data'][] = $v;
+                    if (isset($datasets[$i])) {
+                        $datasets[$i]['data'][] = $v;
+                    }
+                }
             }
-            $i++;
         }
     }
 }
