@@ -23,8 +23,11 @@ class ScheduleLogic
         foreach ($eventsByTag as $tagId => $tagEvents) {
             // Sort by Priority DESC, then Start Time ASC
             usort($tagEvents, function ($a, $b) {
-                if ($a['priority'] != $b['priority']) {
-                    return $b['priority'] - $a['priority'];
+                $pA = (int) ($a['priority'] ?? 0);
+                $pB = (int) ($b['priority'] ?? 0);
+
+                if ($pA != $pB) {
+                    return $pB - $pA;
                 }
                 return strcmp($a['start_time'], $b['start_time']);
             });

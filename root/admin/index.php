@@ -234,7 +234,23 @@ if ($view == 'list') {
             }
 
             $all_relevant = array_merge($events, $ctx_events);
+
+            // DEBUG LOGGING
+            file_put_contents('debug_log.txt', "--- PAGE LOAD ---\n", FILE_APPEND);
+            file_put_contents('debug_log.txt', "Events on page: " . count($events) . "\n", FILE_APPEND);
+            file_put_contents('debug_log.txt', "Context events: " . count($ctx_events) . "\n", FILE_APPEND);
+            file_put_contents('debug_log.txt', "Filter Tag: " . ($filter_tag ? $filter_tag : 'None') . "\n", FILE_APPEND);
+
+            foreach ($all_relevant as $e) {
+                file_put_contents('debug_log.txt', "INPUT: ID {$e['id']} Prio {$e['priority']} Tag {$e['tag_id']} {$e['start_time']} - {$e['end_time']}\n", FILE_APPEND);
+            }
+
             $resolved = ScheduleLogic::resolveSchedule($all_relevant);
+
+            foreach ($resolved as $e) {
+                $mod = !empty($e['is_modified']) ? '[MODIFIED]' : '';
+                file_put_contents('debug_log.txt', "OUTPUT: ID {$e['id']} Prio {$e['priority']} Tag {$e['tag_id']} {$e['start_time']} - {$e['end_time']} $mod\n", FILE_APPEND);
+            }
 
             // Filter back to page events
             $final_events = [];
@@ -379,7 +395,7 @@ if ($view == 'list') {
         // Auto-refresh every 60 seconds to update Live Monitor
         setTimeout(function () {
             window.location.reload();
-        }, 60000);
+    }, 60000);
     </script>
 </head>
 
