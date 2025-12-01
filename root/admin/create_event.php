@@ -24,7 +24,7 @@ if (is_admin() || has_role('user')) {
 // Default values
 $event_name = '';
 $selected_tag_ids = [];
-$priority = 0;
+$priority = 1;
 $asset_id = 0;
 $recurrence = 'none';
 $recur_days = [];
@@ -656,11 +656,11 @@ if ($asset_id > 0) {
                         <div class="form-group">
                             <label>Priority</label>
                             <select name="priority">
-                                <option value="0" <?php if ($priority == 0)
-                                    echo 'selected'; ?>>Low (Default)</option>
                                 <option value="1" <?php if ($priority == 1)
+                                    echo 'selected'; ?>>Normal (Default)</option>
+                                <option value="5" <?php if ($priority == 5)
                                     echo 'selected'; ?>>Medium</option>
-                                <option value="2" <?php if ($priority == 2)
+                                <option value="10" <?php if ($priority == 10)
                                     echo 'selected'; ?>>High (Preempts others)
                                 </option>
                             </select>

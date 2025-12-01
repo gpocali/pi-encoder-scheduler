@@ -649,7 +649,8 @@ if ($view == 'list') {
                     echo '<div class="cal-day" style="background:#1a1a1a;"></div>';
 
                 for ($d = 1; $d <= $days_in_month; $d++) {
-                    echo '<div class="cal-day">';
+                    $is_today = ($d == date('j') && $month == date('m') && $year == date('Y'));
+                    echo '<div class="cal-day' . ($is_today ? ' current-day' : '') . '">';
                     echo '<div class="cal-date">' . $d . '</div>';
                     if (isset($events[$d])) {
                         foreach ($events[$d] as $ev) {

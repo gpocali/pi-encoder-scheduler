@@ -182,7 +182,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
         }
 
         if (empty($errors)) {
-             // Refresh event data (outside transaction)
+            // Refresh event data (outside transaction)
             $stmt = $pdo->prepare("SELECT * FROM events WHERE id = ?");
             $stmt->execute([$event_id]);
             $event = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -484,28 +484,28 @@ if ($event['asset_id'] > 0) {
         <?php if ($success_message): ?>
             <div class="message success"><?php echo $success_message; ?></div>
         <?php endif; ?>
-                <?php if ($is_series): ?>
-                    <div class="form-group" style="background:#2a2a2a; padding:10px; border:1px solid #444; border-radius:4px;">
-                         <label style="font-weight:bold;">Series Management</label>
-                         <div style="margin-top:5px; display:flex; align-items:center; gap:10px;">
-                             <label>End Series:</label>
-                             <input type="date" name="end_series_date" id="end_series_date">
-                             <label><input type="checkbox" id="series_forever" onchange="toggleSeriesForever()"> Forever</label>
-                         </div>
-                         <script>
-                            function toggleSeriesForever() {
-                                const chk = document.getElementById('series_forever');
-                                const date = document.getElementById('end_series_date');
-                                if (chk.checked) {
-                                    date.value = '';
-                                    date.disabled = true;
-                                } else {
-                                    date.disabled = false;
-                                }
-                            }
-                         </script>
-                    </div>
-                <?php endif; ?>
+        <?php if ($is_series): ?>
+            <div class="form-group" style="background:#2a2a2a; padding:10px; border:1px solid #444; border-radius:4px;">
+                <label style="font-weight:bold;">Series Management</label>
+                <div style="margin-top:5px; display:flex; align-items:center; gap:10px;">
+                    <label>End Series:</label>
+                    <input type="date" name="end_series_date" id="end_series_date">
+                    <label><input type="checkbox" id="series_forever" onchange="toggleSeriesForever()"> Forever</label>
+                </div>
+                <script>
+                    function toggleSeriesForever() {
+                        const chk = document.getElementById('series_forever');
+                        const date = document.getElementById('end_series_date');
+                        if (chk.checked) {
+                            date.value = '';
+                            date.disabled = true;
+                        } else {
+                            date.disabled = false;
+                        }
+                    }
+                </script>
+            </div>
+        <?php endif; ?>
         <div class="card">
             <form action="edit_event.php?id=<?php echo $event_id; ?>" method="POST">
                 <input type="hidden" name="action" value="update_event">
@@ -564,12 +564,12 @@ if ($event['asset_id'] > 0) {
                         <div class="form-group">
                             <label>Priority</label>
                             <select name="priority">
-                                <option value="0" <?php if ($event['priority'] == 0)
-                                    echo 'selected'; ?>>Low (Default)
-                                </option>
                                 <option value="1" <?php if ($event['priority'] == 1)
+                                    echo 'selected'; ?>>Normal (Default)
+                                </option>
+                                <option value="5" <?php if ($event['priority'] == 5)
                                     echo 'selected'; ?>>Medium</option>
-                                <option value="2" <?php if ($event['priority'] == 2)
+                                <option value="10" <?php if ($event['priority'] == 10)
                                     echo 'selected'; ?>>High (Preempts
                                     others)</option>
                             </select>
