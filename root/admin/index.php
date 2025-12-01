@@ -199,18 +199,39 @@ if ($view == 'list') {
             $placeholders = implode(',', array_fill(0, count($page_tag_ids), '?'));
             $not_in_ids = implode(',', $page_ids);
 
-            // Fetch context: events overlapping the range, same tags, not in current page
-            $sql_ctx = "SELECT e.*, a.filename_original 
-                        FROM events e 
-                        JOIN assets a ON e.asset_id = a.id 
-                        WHERE e.tag_id IN ($placeholders)
-                        AND e.start_time < ? AND e.end_time > ?
-                        AND e.id NOT IN ($not_in_ids)";
+            $ctx_events = [];
+            if ($filter_tag) {
+                // If filtering by tag, context events must be on that tag
+                $sql_ctx = "SELECT DISTINCT e.*, a.filename_original 
+                            FROM events e 
+                            JOIN event_tags et ON e.id = et.event_id
+                            JOIN assets a ON e.asset_id = a.id 
+                            WHERE et.tag_id = ?
+                            AND e.start_time < ? AND e.end_time > ?
+                            AND e.id NOT IN ($not_in_ids)";
+                $stmt_ctx = $pdo->prepare($sql_ctx);
+                $stmt_ctx->execute([$filter_tag, $max_end, $min_start]);
+                $ctx_events = $stmt_ctx->fetchAll(PDO::FETCH_ASSOC);
 
-            $stmt_ctx = $pdo->prepare($sql_ctx);
-            $params_ctx = array_merge($page_tag_ids, [$max_end, $min_start]);
-            $stmt_ctx->execute($params_ctx);
-            $ctx_events = $stmt_ctx->fetchAll(PDO::FETCH_ASSOC);
+                // Force tag_id to filter_tag for resolution
+                foreach ($events as &$ev)
+                    $ev['tag_id'] = $filter_tag;
+                foreach ($ctx_events as &$ev)
+                    $ev['tag_id'] = $filter_tag;
+                unset($ev);
+            } else {
+                // Default behavior: use primary tag_id
+                $sql_ctx = "SELECT e.*, a.filename_original 
+                            FROM events e 
+                            JOIN assets a ON e.asset_id = a.id 
+                            WHERE e.tag_id IN ($placeholders)
+                            AND e.start_time < ? AND e.end_time > ?
+                            AND e.id NOT IN ($not_in_ids)";
+                $stmt_ctx = $pdo->prepare($sql_ctx);
+                $params_ctx = array_merge($page_tag_ids, [$max_end, $min_start]);
+                $stmt_ctx->execute($params_ctx);
+                $ctx_events = $stmt_ctx->fetchAll(PDO::FETCH_ASSOC);
+            }
 
             $all_relevant = array_merge($events, $ctx_events);
             $resolved = ScheduleLogic::resolveSchedule($all_relevant);
@@ -243,6 +264,11 @@ if ($view == 'list') {
     $raw_events = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Resolve Schedule
+    if ($filter_tag) {
+        foreach ($raw_events as &$ev)
+            $ev['tag_id'] = $filter_tag;
+        unset($ev);
+    }
     $raw_events = ScheduleLogic::resolveSchedule($raw_events);
 
     // Group by day (handling spans)
@@ -289,6 +315,11 @@ if ($view == 'list') {
     $raw_events = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Resolve Schedule
+    if ($filter_tag) {
+        foreach ($raw_events as &$ev)
+            $ev['tag_id'] = $filter_tag;
+        unset($ev);
+    }
     $raw_events = ScheduleLogic::resolveSchedule($raw_events);
 
     // Group by Date (Y-m-d)
@@ -327,6 +358,11 @@ if ($view == 'list') {
     $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Resolve Schedule
+    if ($filter_tag) {
+        foreach ($events as &$ev)
+            $ev['tag_id'] = $filter_tag;
+        unset($ev);
+    }
     $events = ScheduleLogic::resolveSchedule($events);
 }
 
