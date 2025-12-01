@@ -10,6 +10,7 @@ require_role(['admin', 'user']);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stream Command Center</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         /* --- GLOBAL STYLES --- */
         body {
@@ -103,19 +104,11 @@ require_role(['admin', 'user']);
 
         /* Graph Container */
         .graph-container {
-            padding: 15px;
+            padding: 10px;
             background: #1e1e1e;
-            text-align: center;
-            min-height: 160px;
-            /* Prevents layout jump */
-        }
-
-        .graph-img {
+            position: relative;
+            height: 250px;
             width: 100%;
-            height: auto;
-            max-height: 200px;
-            display: block;
-            border-radius: 4px;
         }
 
         /* --- SERVER BREAKDOWN (Accordion) --- */
@@ -229,7 +222,7 @@ require_role(['admin', 'user']);
                 </div>
             </div>
             <div class="graph-container">
-                <img id="graph-Network_Total" class="graph-img" src="" alt="Loading Chart...">
+                <canvas id="chart-Network_Total"></canvas>
             </div>
         </div>
 
@@ -243,6 +236,7 @@ require_role(['admin', 'user']);
             // Configuration
             let currentPeriod = '-24h';
             const sessionPeaks = {}; // Tracks local session max values
+            const charts = {}; // Store Chart instances
 
             // 1. Handle Time Period Switching
             function setPeriod(period) {
@@ -287,11 +281,8 @@ require_role(['admin', 'user']);
                         }
                         document.getElementById('peak-Network_Total').innerText = sessionPeaks['Network_Total'].toLocaleString();
 
-                        // Update Graph (Stacked Area)
-                        const grandGraph = document.getElementById('graph-Network_Total');
-                        if (forceGraphRefresh || grandGraph.getAttribute('src') === "") {
-                            grandGraph.src = `graph.php?s=Network_Total&n=Global&p=${currentPeriod}&t=${Date.now()}`;
-                        }
+                        // Update Graph
+                        updateGraph('Network_Total', currentPeriod, forceGraphRefresh);
                     }
 
                     // --- B. UPDATE STREAM CARDS ---
@@ -319,7 +310,7 @@ require_role(['admin', 'user']);
                                 <span>Low: <b id="l-${key}">0</b></span>
                             </div>
                             <div class="graph-container">
-                                <img id="graph-${key}" class="graph-img" src="" alt="Loading...">
+                                <canvas id="chart-${key}"></canvas>
                             </div>
                             <button class="server-toggle" onclick="toggleDetails('details-${key}')">Show Node Breakdown ▼</button>
                             <div class="server-list" id="details-${key}">
@@ -342,29 +333,15 @@ require_role(['admin', 'user']);
                         }
                         document.getElementById(`peak-${key}`).innerText = sessionPeaks[key].toLocaleString();
 
-                        // 4. Update Graph Image (Only if period changed or first load)
-                        const graphImg = document.getElementById(`graph-${key}`);
-                        if (forceGraphRefresh || graphImg.getAttribute('src') === "") {
-                            graphImg.src = `graph.php?s=${key}&n=Global&p=${currentPeriod}&t=${Date.now()}`;
-                        }
+                        // 4. Update Graph
+                        updateGraph(key, currentPeriod, forceGraphRefresh);
 
                         // 5. Update Server Breakdown List
-                        // We need to look through data.nodes (raw structure) to find servers serving THIS stream
                         const listContainer = document.getElementById(`details-${key}`);
                         let listHtml = '';
 
-                        // The poller needs to include 'nodes' in the JSON structure.
-                        // Assuming structure: data.nodes = { 'Origin-NY': { 'WRHU': {total: 50...} } }
                         if (data.nodes) {
                             for (const [nodeName, nodeStreams] of Object.entries(data.nodes)) {
-                                // Check if this node has data for the current stream Key (e.g. WRHU)
-                                // Note: The Poller maps local names to Global Keys before saving JSON
-                                // So we look for the Global Key here.
-
-                                // To make this work, the Poller PHP must save the node data 
-                                // keyed by the MAPPED name (WRHU), not the raw name (stream1).
-                                // (The provided Poller code does exactly this).
-
                                 if (nodeStreams[key]) {
                                     const nodeStats = nodeStreams[key];
                                     listHtml += `
@@ -383,6 +360,92 @@ require_role(['admin', 'user']);
 
                 } catch (error) {
                     console.error("Polling Error:", error);
+                }
+            }
+
+            // 4. Chart.js Update Function
+            async function updateGraph(key, period, force) {
+                // Throttle updates: only update if force is true or last update was > 60s ago
+                if (!force && charts[key] && (Date.now() - charts[key]._lastUpdated < 60000)) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`api_graph_data.php?s=${key}&n=Global&p=${period}`);
+                    const data = await response.json();
+
+                    const ctx = document.getElementById(`chart-${key}`);
+                    if (!ctx) return;
+
+                    if (charts[key]) {
+                        charts[key].destroy();
+                    }
+
+                    const isStacked = (key === 'Network_Total');
+
+                    const datasets = data.datasets.map((ds, index) => {
+                        const colors = ['#4db8ff', '#ff5555', '#4caf50', '#ffeb3b', '#9c27b0'];
+                        const color = colors[index % colors.length];
+
+                        return {
+                            label: ds.label,
+                            data: ds.data,
+                            borderColor: color,
+                            backgroundColor: color + '44', // Transparent
+                            fill: isStacked || ds.label === 'Average',
+                            borderWidth: 1,
+                            pointRadius: 0,
+                            pointHitRadius: 10
+                        };
+                    });
+
+                    charts[key] = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: data.labels.map(t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
+                            datasets: datasets
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: false,
+                            scales: {
+                                x: {
+                                    display: true,
+                                    ticks: { maxTicksLimit: 8, color: '#888' },
+                                    grid: { display: false }
+                                },
+                                y: {
+                                    beginAtZero: true,
+                                    grid: { color: '#333' },
+                                    ticks: { color: '#888' },
+                                    stacked: isStacked
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    labels: { color: '#ccc', boxWidth: 10 }
+                                },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false
+                                }
+                            },
+                            interaction: {
+                                mode: 'nearest',
+                                axis: 'x',
+                                intersect: false
+                            },
+                            elements: {
+                                line: { tension: 0.2 }
+                            }
+                        }
+                    });
+                    charts[key]._lastUpdated = Date.now();
+
+                } catch (e) {
+                    console.error("Graph Error:", e);
                 }
             }
 
