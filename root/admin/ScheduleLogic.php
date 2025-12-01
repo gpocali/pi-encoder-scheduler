@@ -32,8 +32,9 @@ class ScheduleLogic
             $placedSegments = []; // Array of ['start' => ts, 'end' => ts]
 
             foreach ($tagEvents as $ev) {
-                $evStart = strtotime($ev['start_time']);
-                $evEnd = strtotime($ev['end_time']);
+                // Use UTC timestamps for calculation to avoid timezone shifts
+                $evStart = strtotime($ev['start_time'] . ' UTC');
+                $evEnd = strtotime($ev['end_time'] . ' UTC');
 
                 // Start with the full event as a single candidate segment
                 $candidates = [['start' => $evStart, 'end' => $evEnd]];
@@ -54,8 +55,9 @@ class ScheduleLogic
                 foreach ($candidates as $cand) {
                     // Create a copy of the event with modified times
                     $newEv = $ev;
-                    $newEv['start_time'] = date('Y-m-d H:i:s', $cand['start']);
-                    $newEv['end_time'] = date('Y-m-d H:i:s', $cand['end']);
+                    // Format back to UTC string
+                    $newEv['start_time'] = gmdate('Y-m-d H:i:s', $cand['start']);
+                    $newEv['end_time'] = gmdate('Y-m-d H:i:s', $cand['end']);
 
                     // Mark as modified if it differs from original
                     if ($cand['start'] != $evStart || $cand['end'] != $evEnd) {

@@ -275,6 +275,7 @@ if ($view == 'list') {
     $month_start_ts = strtotime($start_month);
     $year = date('Y', $month_start_ts);
     $month = date('m', $month_start_ts);
+    $days_in_month = date('t', $month_start_ts);
 
     foreach ($raw_events as $ev) {
         $ev_start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
