@@ -797,9 +797,10 @@ if ($event['asset_id'] > 0) {
                             <label for="update_scope" style="margin:0;">Update Scope:</label>
                             <select name="update_scope" id="update_scope"
                                 style="padding: 10px; background: #333; color: #fff; border: 1px solid #444; border-radius: 4px;">
-                                <option value="only_this">Only This Instance</option>
-                                <option value="future">This & Future</option>
-                                <option value="all">Entire Series</option>
+                                <?php $scope = $_POST['update_scope'] ?? 'all'; ?>
+                                <option value="all" <?php if ($scope == 'all') echo 'selected'; ?>>Entire Series</option>
+                                <option value="future" <?php if ($scope == 'future') echo 'selected'; ?>>This & Future</option>
+                                <option value="only_this" <?php if ($scope == 'only_this') echo 'selected'; ?>>Only This Instance</option>
                             </select>
                         </div>
                     <?php endif; ?>
