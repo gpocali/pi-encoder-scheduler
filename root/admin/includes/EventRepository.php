@@ -219,7 +219,7 @@ class EventRepository
     {
         if ($groupByEvent) {
             $sql = "
-                SELECT e.*, a.filename_original, GROUP_CONCAT(t.tag_name SEPARATOR ', ') as tag_names, GROUP_CONCAT(t.id) as tag_ids
+                SELECT e.*, 'none' as recurrence_type, a.filename_original, GROUP_CONCAT(t.tag_name SEPARATOR ', ') as tag_names, GROUP_CONCAT(t.id) as tag_ids
                 FROM events e
                 LEFT JOIN event_tags et ON e.id = et.event_id
                 LEFT JOIN tags t ON et.tag_id = t.id
@@ -228,7 +228,7 @@ class EventRepository
             ";
         } else {
             $sql = "
-                SELECT e.*, a.filename_original, et.tag_id
+                SELECT e.*, 'none' as recurrence_type, a.filename_original, et.tag_id
                 FROM events e
                 LEFT JOIN event_tags et ON e.id = et.event_id
                 LEFT JOIN assets a ON e.asset_id = a.id

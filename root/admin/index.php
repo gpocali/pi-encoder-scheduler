@@ -2,6 +2,7 @@
 require_once 'auth.php';
 require_once '../db_connect.php';
 require_once 'ScheduleLogic.php';
+require_once 'includes/EventRepository.php';
 date_default_timezone_set('America/New_York');
 
 // Helper to get current URL with modified params
@@ -81,20 +82,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 // --- LIVE MONITOR DATA ---
 $live_status = [];
-$now_utc_str = (new DateTime())->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+$repo = new EventRepository($pdo);
 
 foreach ($tags as $tag) {
-    // Find highest priority active event
-    $sql_live = "SELECT e.*, a.filename_disk, a.filename_original, a.mime_type 
-                 FROM events e 
-                 JOIN event_tags et ON e.id = et.event_id
-                 JOIN assets a ON e.asset_id = a.id 
-                 WHERE et.tag_id = ? 
-                 AND e.start_time <= ? AND e.end_time > ? 
-                 ORDER BY e.priority DESC, e.start_time ASC LIMIT 1";
-    $stmt_live = $pdo->prepare($sql_live);
-    $stmt_live->execute([$tag['id'], $now_utc_str, $now_utc_str]);
-    $live_event = $stmt_live->fetch(PDO::FETCH_ASSOC);
+    $live_event = $repo->getCurrentEvent($tag['tag_name']);
 
     if ($live_event) {
         $live_status[$tag['id']] = [
@@ -114,15 +105,11 @@ foreach ($tags as $tag) {
 
         $live_status[$tag['id']] = [
             'type' => 'default',
-            'data' => $def_asset, // Can be false if no default
+            'data' => $def_asset,
             'tag_name' => $tag['tag_name']
         ];
     }
 }
-
-require_once 'includes/EventRepository.php';
-
-// ... (keep top part)
 
 // --- FILTERS & VIEWS ---
 $view = $_GET['view'] ?? 'list';
@@ -134,7 +121,7 @@ $sort_order = $_GET['order'] ?? 'asc';
 $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
 $per_page = 20;
 
-$repo = new EventRepository($pdo);
+// $repo is already initialized
 $events = [];
 $total_pages = 1;
 
