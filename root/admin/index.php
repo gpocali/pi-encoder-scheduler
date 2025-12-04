@@ -434,7 +434,6 @@ if ($view == 'list') {
                         if ($is_series) {
                             $status = 'Recurring';
                             $status_color = 'var(--accent-color)';
-                            $start_display = 'Starts: ' . $ev['start_date'];
 
                             // Recurrence Pattern
                             $recur_info = ucfirst($ev['recurrence_type']);
@@ -448,7 +447,11 @@ if ($view == 'list') {
                             }
                             // Format Time to AM/PM
                             $time_obj = new DateTime($ev['start_time']); // Local time string
-                            $end_display = $recur_info . '<br>Time: ' . $time_obj->format('g:i A');
+                            $end_time_obj = clone $time_obj;
+                            $end_time_obj->modify("+{$ev['duration']} seconds");
+
+                            $start_display = $time_obj->format('g:i A') . '<br><small>Starts: ' . $ev['start_date'] . '</small>';
+                            $end_display = $end_time_obj->format('g:i A') . '<br><small>' . $recur_info . '</small>';
 
                             $edit_link = "edit_event.php?id=recur_" . $ev['id'] . "_0"; // 0 timestamp for series edit? Or just recur_ID
                             // Actually edit_event expects recur_{id}_{timestamp} for instances.
