@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     // Validate Tags
     foreach ($tag_ids as $tid) {
-        if (!in_array($tid, $allowed_tag_ids)) {
+        if (!in_array((int)$tid, array_map('intval', $allowed_tag_ids))) {
             $errors[] = "You do not have permission for one or more selected tags.";
             break;
         }
