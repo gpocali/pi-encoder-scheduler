@@ -476,7 +476,15 @@ if ($event['asset_id'] > 0) {
                 <i class="fas fa-arrow-left"></i> Back to Dashboard
             </a>
         </div>
-        <h1>Edit Event</h1>
+        <div style="display:flex; align-items:center; gap:15px; margin-bottom:20px;">
+            <h1 style="margin:0;">Edit Event</h1>
+            <form action="edit_event.php?<?php echo $_SERVER['QUERY_STRING']; ?>" method="POST"
+                onsubmit="return confirm('Delete this event?');" style="margin:0;">
+                <input type="hidden" name="action" value="delete_event">
+                <button type="submit" class="btn-delete" style="padding: 5px 10px; font-size: 0.8em; width:auto;">Delete
+                    Event</button>
+            </form>
+        </div>
 
         <?php if (!empty($errors)): ?>
             <div class="message error">

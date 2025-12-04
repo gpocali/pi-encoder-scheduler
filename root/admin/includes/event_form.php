@@ -174,21 +174,10 @@
                     </select>
                 </div>
             <?php endif; ?>
-
             <button type="submit" class="btn"
                 style="flex:1; white-space:nowrap;"><?php echo $is_edit ? 'Update Event' : 'Create Event'; ?></button>
         </div>
     </form>
-
-    <?php if ($is_edit): ?>
-        <div style="display:flex; gap:10px; margin-top:1em;">
-            <form action="edit_event.php?<?php echo $_SERVER['QUERY_STRING']; ?>" method="POST"
-                onsubmit="return confirm('Delete this event?');" style="flex:1;">
-                <input type="hidden" name="action" value="delete_event">
-                <button type="submit" class="btn-delete" style="width:100%;">Delete Event</button>
-            </form>
-        </div>
-    <?php endif; ?>
 </div>
 
 <!-- Asset Selection Modal -->
