@@ -293,6 +293,7 @@ if ($view == 'list') {
     $raw_events = $repo->getEvents($start_utc, $end_utc, $filter_tag);
     $events = ScheduleLogic::resolveSchedule($raw_events);
     $events = ScheduleLogic::deduplicateSegments($events);
+    $events = ScheduleLogic::fillGaps($events, $filter_date);
 }
 
 ?>
