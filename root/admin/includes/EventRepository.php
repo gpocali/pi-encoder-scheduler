@@ -16,11 +16,11 @@ class EventRepository
      */
     public function getEvents($startDate, $endDate, $tagId = null)
     {
-        // 1. Fetch One-Off Events
-        $oneOffs = $this->fetchOneOffEvents($startDate, $endDate, $tagId);
+        // 1. Fetch One-Off Events (Expanded by Tag for correct preemption)
+        $oneOffs = $this->fetchOneOffEvents($startDate, $endDate, $tagId, false);
 
-        // 2. Fetch Recurring Series that overlap with the range
-        $series = $this->fetchRecurringSeries($startDate, $endDate, $tagId);
+        // 2. Fetch Recurring Series that overlap with the range (Expanded by Tag)
+        $series = $this->fetchRecurringSeries($startDate, $endDate, $tagId, false);
 
         // 3. Expand Series into Instances
         $instances = [];
@@ -97,7 +97,7 @@ class EventRepository
     public function getFutureEvents($tagId = null)
     {
         $now = gmdate('Y-m-d H:i:s');
-        return $this->fetchOneOffEvents($now, '2037-12-31', $tagId);
+        return $this->fetchOneOffEvents($now, '2037-12-31', $tagId, true);
     }
 
     /**
@@ -214,15 +214,25 @@ class EventRepository
 
     // --- Private Helpers ---
 
-    private function fetchOneOffEvents($start, $end, $tagId)
+    private function fetchOneOffEvents($start, $end, $tagId, $groupByEvent = true)
     {
-        $sql = "
-            SELECT e.*, GROUP_CONCAT(t.tag_name SEPARATOR ', ') as tag_names, GROUP_CONCAT(t.id) as tag_ids
-            FROM events e
-            LEFT JOIN event_tags et ON e.id = et.event_id
-            LEFT JOIN tags t ON et.tag_id = t.id
-            WHERE e.end_time >= ? AND e.start_time <= ?
-        ";
+        if ($groupByEvent) {
+            $sql = "
+                SELECT e.*, GROUP_CONCAT(t.tag_name SEPARATOR ', ') as tag_names, GROUP_CONCAT(t.id) as tag_ids
+                FROM events e
+                LEFT JOIN event_tags et ON e.id = et.event_id
+                LEFT JOIN tags t ON et.tag_id = t.id
+                WHERE e.end_time >= ? AND e.start_time <= ?
+            ";
+        } else {
+            $sql = "
+                SELECT e.*, et.tag_id
+                FROM events e
+                LEFT JOIN event_tags et ON e.id = et.event_id
+                WHERE e.end_time >= ? AND e.start_time <= ?
+            ";
+        }
+
         $params = [$start, $end];
 
         if ($tagId) {
@@ -230,24 +240,36 @@ class EventRepository
             $params[] = $tagId;
         }
 
-        $sql .= " GROUP BY e.id";
+        if ($groupByEvent) {
+            $sql .= " GROUP BY e.id";
+        }
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    private function fetchRecurringSeries($start, $end, $tagId)
+    private function fetchRecurringSeries($start, $end, $tagId, $groupByEvent = true)
     {
-        // Series that started before the end of the range, and ended after the start of the range (or never)
-        $sql = "
-            SELECT re.*, GROUP_CONCAT(t.tag_name SEPARATOR ', ') as tag_names, GROUP_CONCAT(t.id) as tag_ids
-            FROM recurring_events re
-            LEFT JOIN recurring_event_tags ret ON re.id = ret.recurring_event_id
-            LEFT JOIN tags t ON ret.tag_id = t.id
-            WHERE re.start_date <= ? 
-              AND (re.end_date IS NULL OR re.end_date >= ?)
-        ";
+        if ($groupByEvent) {
+            $sql = "
+                SELECT re.*, GROUP_CONCAT(t.tag_name SEPARATOR ', ') as tag_names, GROUP_CONCAT(t.id) as tag_ids
+                FROM recurring_events re
+                LEFT JOIN recurring_event_tags ret ON re.id = ret.recurring_event_id
+                LEFT JOIN tags t ON ret.tag_id = t.id
+                WHERE re.start_date <= ? 
+                  AND (re.end_date IS NULL OR re.end_date >= ?)
+            ";
+        } else {
+            $sql = "
+                SELECT re.*, ret.tag_id
+                FROM recurring_events re
+                LEFT JOIN recurring_event_tags ret ON re.id = ret.recurring_event_id
+                WHERE re.start_date <= ? 
+                  AND (re.end_date IS NULL OR re.end_date >= ?)
+            ";
+        }
+
         $params = [$end, $start];
 
         if ($tagId) {
@@ -255,7 +277,9 @@ class EventRepository
             $params[] = $tagId;
         }
 
-        $sql .= " GROUP BY re.id";
+        if ($groupByEvent) {
+            $sql .= " GROUP BY re.id";
+        }
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
