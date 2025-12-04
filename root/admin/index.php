@@ -681,8 +681,19 @@ if ($view == 'list') {
                     echo '<div class="cal-date">' . $d . '</div>';
                     if (isset($events[$d])) {
                         foreach ($events[$d] as $ev) {
-                            $time = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
-                            echo '<a href="edit_event.php?id=' . $ev['id'] . '" class="cal-event priority-' . $ev['priority'] . '">' . $time . ' ' . $ev['event_name'] . '</a>';
+                            $time_obj = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
+                            $time = $time_obj->format('H:i');
+
+                            $is_gap = isset($ev['type']) && $ev['type'] == 'default_gap';
+                            if ($is_gap) {
+                                // Month view date construction
+                                $this_date = date('Y-m-d', strtotime("$start_month + " . ($d - 1) . " days"));
+                                $link_url = "create_event.php?start_date=" . $this_date . "&start_time=" . $time;
+                            } else {
+                                $link_url = "edit_event.php?id=" . $ev['id'];
+                            }
+
+                            echo '<a href="' . $link_url . '" class="cal-event priority-' . $ev['priority'] . '">' . $time . ' ' . $ev['event_name'] . '</a>';
                         }
                     }
                     echo '</div>';
@@ -714,7 +725,15 @@ if ($view == 'list') {
                         foreach ($events[$date_str] as $ev) {
                             $start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
                             $end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
-                            echo '<a href="edit_event.php?id=' . $ev['id'] . '" class="cal-event priority-' . $ev['priority'] . '" style="padding:5px; margin-bottom:5px;">';
+
+                            $is_gap = isset($ev['type']) && $ev['type'] == 'default_gap';
+                            if ($is_gap) {
+                                $link_url = "create_event.php?start_date=" . $date_str . "&start_time=" . $start;
+                            } else {
+                                $link_url = "edit_event.php?id=" . $ev['id'];
+                            }
+
+                            echo '<a href="' . $link_url . '" class="cal-event priority-' . $ev['priority'] . '" style="padding:5px; margin-bottom:5px;">';
                             echo '<b>' . $start . '-' . $end . '</b><br>' . $ev['event_name'];
                             echo '</a>';
                         }
@@ -756,7 +775,15 @@ if ($view == 'list') {
                                     | Asset: <?php echo htmlspecialchars($ev['filename_original']); ?>
                                 </div>
                             </div>
-                            <a href="edit_event.php?id=<?php echo $ev['id']; ?>" class="btn btn-sm btn-secondary">Edit</a>
+                            <?php if (isset($ev['type']) && $ev['type'] == 'default_gap'): ?>
+                                <?php
+                                $add_url = "create_event.php?start_date=" . date('Y-m-d', strtotime($filter_date)) . "&start_time=" . (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
+                                ?>
+                                <a href="<?php echo $add_url; ?>" class="btn btn-sm"
+                                    style="background:var(--success-color); color:#fff;">Add Event</a>
+                            <?php else: ?>
+                                <a href="edit_event.php?id=<?php echo $ev['id']; ?>" class="btn btn-sm btn-secondary">Edit</a>
+                            <?php endif; ?>
                         </div>
                     <?php endforeach; ?>
                 <?php endif; ?>
