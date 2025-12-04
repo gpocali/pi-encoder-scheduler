@@ -223,6 +223,7 @@ if ($view == 'list') {
 
     $raw_events = $repo->getEvents($start_utc, $end_utc, $filter_tag);
     $resolved = ScheduleLogic::resolveSchedule($raw_events);
+    $resolved = ScheduleLogic::deduplicateSegments($resolved);
 
     // Group by day
     $month_start_ts = strtotime($start_month);
@@ -260,6 +261,7 @@ if ($view == 'list') {
 
     $raw_events = $repo->getEvents($start_utc, $end_utc, $filter_tag);
     $resolved = ScheduleLogic::resolveSchedule($raw_events);
+    $resolved = ScheduleLogic::deduplicateSegments($resolved);
 
     // Group by Date
     $week_dates = [];
@@ -290,6 +292,7 @@ if ($view == 'list') {
 
     $raw_events = $repo->getEvents($start_utc, $end_utc, $filter_tag);
     $events = ScheduleLogic::resolveSchedule($raw_events);
+    $events = ScheduleLogic::deduplicateSegments($events);
 }
 
 ?>

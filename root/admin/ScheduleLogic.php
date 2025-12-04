@@ -111,4 +111,23 @@ class ScheduleLogic
 
         return $result;
     }
+    /**
+     * Deduplicates segments that are identical across multiple tags.
+     * Used for display when viewing "All Tags".
+     */
+    public static function deduplicateSegments(array $segments)
+    {
+        $unique = [];
+        foreach ($segments as $ev) {
+            // Create a unique key based on ID and Time
+            // For recurring instances, 'id' is already unique per instance (recur_ID_TIME)
+            // For one-offs, 'id' is the DB ID.
+            $key = $ev['id'] . '_' . $ev['start_time'] . '_' . $ev['end_time'];
+
+            if (!isset($unique[$key])) {
+                $unique[$key] = $ev;
+            }
+        }
+        return array_values($unique);
+    }
 }
