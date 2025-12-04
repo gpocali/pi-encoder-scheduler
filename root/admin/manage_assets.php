@@ -50,10 +50,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$sql_assets = "SELECT a.*, u.username, at.tag_id 
+$sql_assets = "SELECT a.*, u.username, at.tag_id, 
+               GROUP_CONCAT(DISTINCT t_def.tag_name SEPARATOR ', ') as default_for_tags
                FROM assets a 
                LEFT JOIN users u ON a.uploaded_by = u.id 
                LEFT JOIN asset_tags at ON a.id = at.asset_id 
+               LEFT JOIN default_assets da ON a.id = da.asset_id
+               LEFT JOIN tags t_def ON da.tag_id = t_def.id
                WHERE 1=1";
 $params = [];
 
