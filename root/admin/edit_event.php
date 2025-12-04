@@ -501,28 +501,19 @@ $is_read_only = ($end_check < $now_check);
         // $recurrence, $recur_until, $recur_forever, $recur_days are already set
         // $is_series is already set
         // $event_id is already set
-        
-        // Determine Read-Only Status
-        $is_read_only = false;
-        if (!$is_series) {
-            $end_utc = new DateTime($event['end_time'], new DateTimeZone('UTC'));
-            $now_utc = new DateTime('now', new DateTimeZone('UTC'));
-            if ($end_utc < $now_utc) {
-                $is_read_only = true;
-            }
-        }
         ?>
 
-        <div style="display:flex; align-items:center; gap:15px; margin-bottom:20px;">
-            <h1 style="margin:0;">Edit Event</h1>
-            <?php if (!$is_read_only): ?>
+        <div style="display:flex; align-items:center; gap:15px; margin-bottom: 20px;">
+            <h1 style="margin:0;">
+                <?php echo $is_edit ? ($is_read_only ? 'View Event' : 'Edit Event') : 'Create Event'; ?></h1>
+            <?php if ($is_edit && !$is_read_only): ?>
                 <form action="edit_event.php?<?php echo $_SERVER['QUERY_STRING']; ?>" method="POST"
                     onsubmit="return confirm('Delete this event?');" style="margin:0;">
                     <input type="hidden" name="action" value="delete_event">
                     <button type="submit" class="btn-delete" style="padding: 5px 10px; font-size: 0.8em; width:auto;">Delete
                         Event</button>
                 </form>
-            <?php else: ?>
+            <?php elseif ($is_edit && $is_read_only): ?>
                 <span class="badge" style="background:#555; color:#ccc;">Read Only (Past Event)</span>
             <?php endif; ?>
         </div>
