@@ -819,10 +819,23 @@ if ($view == 'list') {
                                 <div style="font-size:0.9em; color:#888;">
                                     Tags:
                                     <?php
-                                    $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
-                                    $stmt_t->execute([$ev['id']]);
-                                    $tag_names = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
-                                    echo htmlspecialchars(implode(', ', $tag_names));
+                                    if (isset($ev['tag_names'])) {
+                                        echo htmlspecialchars($ev['tag_names']);
+                                    } else {
+                                        // Check if it's a recurring instance
+                                        if (strpos($ev['id'], 'recur_') === 0) {
+                                            $parts = explode('_', $ev['id']);
+                                            $recur_id = (int) $parts[1];
+                                            $stmt_t = $pdo->prepare("SELECT t.tag_name FROM recurring_event_tags ret JOIN tags t ON ret.tag_id = t.id WHERE ret.recurring_event_id = ?");
+                                            $stmt_t->execute([$recur_id]);
+                                        } else {
+                                            // Standard event
+                                            $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
+                                            $stmt_t->execute([$ev['id']]);
+                                        }
+                                        $tag_names = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
+                                        echo htmlspecialchars(implode(', ', $tag_names));
+                                    }
                                     ?>
                                     | Asset: <?php echo htmlspecialchars($ev['filename_original']); ?>
                                 </div>
@@ -834,15 +847,16 @@ if ($view == 'list') {
                                 <a href="<?php echo $add_url; ?>" class="btn btn-sm"
                                     style="background-color: #28a745; color: #fff; border: none;">Add Event</a>
                             <?php else: ?>
-                                                <?php
-                                                $btn_text = 'Edit';
-                                                $btn_class = 'btn-secondary';
-                                                if ($status_class == 'status-past') {
-                                                    $btn_text = 'View';
-                                                    $btn_class = '';
-                                                }
-                                                ?>
-                                <a href="edit_event.php?id=<?php echo $ev['id']; ?>" class="btn btn-sm <?php echo $btn_class; ?>" style="<?php echo $status_class == 'status-past' ? 'background:#555; color:#aaa;' : ''; ?>"><?php echo $btn_text; ?></a>
+                                <?php
+                                $btn_text = 'Edit';
+                                $btn_class = 'btn-secondary';
+                                if ($status_class == 'status-past') {
+                                    $btn_text = 'View';
+                                    $btn_class = '';
+                                }
+                                ?>
+                                <a href="edit_event.php?id=<?php echo $ev['id']; ?>" class="btn btn-sm <?php echo $btn_class; ?>"
+                                    style="<?php echo $status_class == 'status-past' ? 'background:#555; color:#aaa;' : ''; ?>"><?php echo $btn_text; ?></a>
                             <?php endif; ?>
                         </div>
                     <?php endforeach; ?>
