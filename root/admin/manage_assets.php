@@ -273,17 +273,6 @@ if (!function_exists('formatBytes')) {
                     <div style="display:flex; gap:10px;">
                         <a href="edit_asset.php?id=<?php echo $asset['id']; ?>" class="btn btn-sm btn-secondary"
                             style="flex:1; text-align:center;">Edit</a>
-                        <?php if (($is_admin || $asset['uploaded_by'] == $_SESSION['user_id']) && empty($asset['default_for_tags'])): ?>
-                            <form method="POST" onsubmit="return confirm('Delete this asset? This cannot be undone.');"
-                                style="flex:1;">
-                                <input type="hidden" name="action" value="delete_asset">
-                                <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
-                                <button type="submit" class="btn-delete btn-sm" style="width: 100%;">Delete</button>
-                            </form>
-                        <?php else: ?>
-                            <button class="btn-delete btn-sm" style="flex:1; opacity:0.5; cursor:not-allowed;"
-                                disabled>Delete</button>
-                        <?php endif; ?>
                     </div>
                 </div>
             <?php endforeach; ?>

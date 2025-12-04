@@ -102,7 +102,18 @@ $all_tags = $stmt_all_tags->fetchAll(PDO::FETCH_ASSOC);
 <body>
     <?php include 'navbar.php'; ?>
     <div class="container">
-        <h1>Edit Asset</h1>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+            <h1 style="margin:0;">Edit Asset</h1>
+            <?php if ($has_permission && empty($asset['default_for_tags'])): ?>
+                <form action="manage_assets.php" method="POST"
+                    onsubmit="return confirm('Delete this asset? This cannot be undone.');" style="margin:0;">
+                    <input type="hidden" name="action" value="delete_asset">
+                    <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
+                    <button type="submit" class="btn-delete" style="padding: 5px 10px; font-size: 0.8em; width:auto;">Delete
+                        Asset</button>
+                </form>
+            <?php endif; ?>
+        </div>
 
         <?php if (!empty($errors)): ?>
             <div class="message error">
@@ -128,23 +139,23 @@ $all_tags = $stmt_all_tags->fetchAll(PDO::FETCH_ASSOC);
                         required>
                 </div>
 
-            <div class="form-group">
-                <label>Tags</label>
-                <div class="tag-toggle-group">
-                    <?php foreach ($all_tags as $tag): ?>
-                        <label class="tag-toggle <?php echo in_array($tag['id'], $current_tag_ids) ? 'active' : ''; ?>"
-                            onclick="this.classList.toggle('active')">
-                            <?php echo htmlspecialchars($tag['tag_name']); ?>
-                            <input type="checkbox" name="tag_ids[]" value="<?php echo $tag['id']; ?>" <?php echo in_array($tag['id'], $current_tag_ids) ? 'checked' : ''; ?>>
-                        </label>
-                    <?php endforeach; ?>
+                <div class="form-group">
+                    <label>Tags</label>
+                    <div class="tag-toggle-group">
+                        <?php foreach ($all_tags as $tag): ?>
+                            <label class="tag-toggle <?php echo in_array($tag['id'], $current_tag_ids) ? 'active' : ''; ?>"
+                                onclick="this.classList.toggle('active')">
+                                <?php echo htmlspecialchars($tag['tag_name']); ?>
+                                <input type="checkbox" name="tag_ids[]" value="<?php echo $tag['id']; ?>" <?php echo in_array($tag['id'], $current_tag_ids) ? 'checked' : ''; ?>>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
-            </div>
 
-            <div style="display:flex; gap:10px;">
-                <button type="submit" class="btn">Save Changes</button>
-                <a href="manage_assets.php" class="btn btn-secondary">Back to Assets</a>
-            </div>
+                <div style="display:flex; gap:10px;">
+                    <button type="submit" class="btn">Save Changes</button>
+                    <a href="manage_assets.php" class="btn btn-secondary">Back to Assets</a>
+                </div>
             </form>
         </div>
     </div>
