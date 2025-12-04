@@ -84,6 +84,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $display_name = trim($_POST['display_name']);
     $tag_ids = $_POST['tag_ids'] ?? [];
 
+    // DEBUG LOGGING
+    error_log("Edit Asset POST: " . print_r($_POST, true));
+    error_log("Allowed Tags: " . print_r($allowed_tag_ids, true));
+    error_log("Selected Tags: " . print_r($tag_ids, true));
+
     if (empty($display_name)) {
         $errors[] = "Display Name is required.";
     }

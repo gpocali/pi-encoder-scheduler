@@ -636,3 +636,33 @@ footer {
     background-color: var(--border-color);
     margin: 4px 0;
 }
+
+/* Event Status Indicators */
+.status-past {
+    opacity: 0.5;
+    filter: grayscale(0.5);
+}
+
+.status-live {
+    border: 1px solid var(--error-color) !important;
+    box-shadow: 0 0 5px rgba(207, 102, 121, 0.5);
+    position: relative;
+}
+
+/* Specific adjustments for views */
+.cal-event.status-live {
+    border-left: 3px solid var(--error-color) !important;
+    /* Override priority border */
+    background: rgba(207, 102, 121, 0.2);
+    color: #fff;
+}
+
+.day-event.status-live {
+    border-left: 4px solid var(--error-color) !important;
+    background: linear-gradient(90deg, rgba(207, 102, 121, 0.15) 0%, transparent 100%);
+}
+
+.cal-event.status-past,
+.day-event.status-past {
+    border-left-color: #555 !important;
+}

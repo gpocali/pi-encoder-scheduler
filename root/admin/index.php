@@ -551,10 +551,12 @@ if ($view == 'list') {
                             <td>
                                 <?php if (!empty($live_tags)): ?>
                                     <?php foreach ($live_tags as $ltag): ?>
-                                        <div class="badge badge-live" style="margin-bottom:2px;">Live: <?php echo htmlspecialchars($ltag); ?></div>
+                                        <div class="badge badge-live" style="margin-bottom:2px;">Live:
+                                            <?php echo htmlspecialchars($ltag); ?></div>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
-                                <span style="color:<?php echo $status_color; ?>; font-weight:bold;"><?php echo $status; ?></span>
+                                <span
+                                    style="color:<?php echo $status_color; ?>; font-weight:bold;"><?php echo $status; ?></span>
                             </td>
                             <td>
                                 <?php
@@ -677,7 +679,18 @@ if ($view == 'list') {
                     echo '<div class="cal-date">' . $d . '</div>';
                     if (isset($events[$d])) {
                         foreach ($events[$d] as $ev) {
-                            $time_obj = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
+                            $start_utc = new DateTime($ev['start_time'], new DateTimeZone('UTC'));
+                            $end_utc = new DateTime($ev['end_time'], new DateTimeZone('UTC'));
+                            $now_utc = new DateTime('now', new DateTimeZone('UTC'));
+
+                            $status_class = 'status-future';
+                            if ($end_utc < $now_utc) {
+                                $status_class = 'status-past';
+                            } elseif ($start_utc <= $now_utc && $end_utc > $now_utc) {
+                                $status_class = 'status-live';
+                            }
+
+                            $time_obj = $start_utc->setTimezone(new DateTimeZone('America/New_York'));
                             $time = $time_obj->format('H:i');
 
                             $is_gap = isset($ev['type']) && $ev['type'] == 'default_gap';
@@ -685,11 +698,12 @@ if ($view == 'list') {
                                 // Month view date construction
                                 $this_date = date('Y-m-d', strtotime("$start_month + " . ($d - 1) . " days"));
                                 $link_url = "create_event.php?start_date=" . $this_date . "&start_time=" . $time;
+                                $status_class = ''; // No status for gaps
                             } else {
                                 $link_url = "edit_event.php?id=" . $ev['id'];
                             }
 
-                            echo '<a href="' . $link_url . '" class="cal-event priority-' . $ev['priority'] . '">' . $time . ' ' . $ev['event_name'] . '</a>';
+                            echo '<a href="' . $link_url . '" class="cal-event priority-' . $ev['priority'] . ' ' . $status_class . '">' . $time . ' ' . $ev['event_name'] . '</a>';
                         }
                     }
                     echo '</div>';
@@ -719,17 +733,29 @@ if ($view == 'list') {
 
                     if (isset($events[$date_str])) {
                         foreach ($events[$date_str] as $ev) {
-                            $start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
-                            $end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
+                            $start_utc = new DateTime($ev['start_time'], new DateTimeZone('UTC'));
+                            $end_utc = new DateTime($ev['end_time'], new DateTimeZone('UTC'));
+                            $now_utc = new DateTime('now', new DateTimeZone('UTC'));
+
+                            $status_class = 'status-future';
+                            if ($end_utc < $now_utc) {
+                                $status_class = 'status-past';
+                            } elseif ($start_utc <= $now_utc && $end_utc > $now_utc) {
+                                $status_class = 'status-live';
+                            }
+
+                            $start = $start_utc->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
+                            $end = $end_utc->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
 
                             $is_gap = isset($ev['type']) && $ev['type'] == 'default_gap';
                             if ($is_gap) {
                                 $link_url = "create_event.php?start_date=" . $date_str . "&start_time=" . $start;
+                                $status_class = '';
                             } else {
                                 $link_url = "edit_event.php?id=" . $ev['id'];
                             }
 
-                            echo '<a href="' . $link_url . '" class="cal-event priority-' . $ev['priority'] . '" style="padding:5px; margin-bottom:5px;">';
+                            echo '<a href="' . $link_url . '" class="cal-event priority-' . $ev['priority'] . ' ' . $status_class . '" style="padding:5px; margin-bottom:5px;">';
                             echo '<b>' . $start . '-' . $end . '</b><br>' . $ev['event_name'];
                             echo '</a>';
                         }
@@ -748,13 +774,33 @@ if ($view == 'list') {
                     <p style="color:#777;">No events scheduled for this day.</p>
                 <?php else: ?>
                     <?php foreach ($events as $ev):
-                        $start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
-                        $end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
+                        $start_utc = new DateTime($ev['start_time'], new DateTimeZone('UTC'));
+                        $end_utc = new DateTime($ev['end_time'], new DateTimeZone('UTC'));
+                        $now_utc = new DateTime('now', new DateTimeZone('UTC'));
+
+                        $status_class = 'status-future';
+                        $status_label = '';
+                        if ($end_utc < $now_utc) {
+                            $status_class = 'status-past';
+                            $status_label = '<span class="badge" style="background:#555; margin-left:10px; font-size:0.7em;">PAST</span>';
+                        } elseif ($start_utc <= $now_utc && $end_utc > $now_utc) {
+                            $status_class = 'status-live';
+                            $status_label = '<span class="badge badge-live" style="margin-left:10px; font-size:0.7em;">LIVE</span>';
+                        }
+
+                        $start = $start_utc->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
+                        $end = $end_utc->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
+
+                        if (isset($ev['type']) && $ev['type'] == 'default_gap') {
+                            $status_class = '';
+                            $status_label = '';
+                        }
                         ?>
-                        <div class="day-event priority-<?php echo $ev['priority']; ?>">
+                        <div class="day-event priority-<?php echo $ev['priority']; ?> <?php echo $status_class; ?>">
                             <div>
                                 <div style="font-weight:bold; font-size:1.1em;">
                                     <?php echo $start . ' - ' . $end; ?>
+                                    <?php echo $status_label; ?>
                                     <?php if ($ev['priority'] == 2): ?>
                                         <span class="badge badge-live" style="margin-left:10px; font-size:0.7em;">HIGH PRIORITY</span>
                                     <?php endif; ?>
