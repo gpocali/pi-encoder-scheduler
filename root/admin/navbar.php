@@ -27,12 +27,14 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
                     </a>
                 </li>
                 <li>
-                    <a href="manage_assets.php" class="<?php echo $current_page == 'manage_assets.php' ? 'active' : ''; ?>">
+                    <a href="manage_assets.php"
+                        class="<?php echo $current_page == 'manage_assets.php' ? 'active' : ''; ?>">
                         <i class="bi bi-collection-play"></i> Assets
                     </a>
                 </li>
                 <li>
-                    <a href="create_event.php" class="<?php echo $current_page == 'create_event.php' ? 'active' : ''; ?>">
+                    <a href="create_event.php"
+                        class="<?php echo $current_page == 'create_event.php' ? 'active' : ''; ?>">
                         <i class="bi bi-calendar-plus"></i> Create Event
                     </a>
                 </li>
@@ -42,16 +44,18 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
             <button id="global-upload-btn" class="btn btn-sm upload-btn">
                 <i class="bi bi-cloud-upload"></i> Upload Asset
             </button>
-            
+
             <div class="dropdown">
                 <a href="#" class="dropdown-toggle">
-                    <i class="bi bi-person-circle"></i> <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?> <i class="bi bi-caret-down-fill" style="font-size:0.8em;"></i>
+                    <i class="bi bi-person-circle"></i> <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?>
+                    <i class="bi bi-caret-down-fill" style="font-size:0.8em;"></i>
                 </a>
                 <div class="dropdown-content">
                     <a href="profile.php"><i class="bi bi-gear"></i> Profile Settings</a>
                     <?php if ($user_role === 'admin'): ?>
                         <a href="manage_users.php"><i class="bi bi-people"></i> Manage Users</a>
                         <a href="default_assets.php"><i class="bi bi-images"></i> Default Assets</a>
+                        <a href="manage_tags.php"><i class="bi bi-tags"></i> Manage Tags</a>
                     <?php endif; ?>
                     <div class="dropdown-divider"></div>
                     <a href="logout.php"><i class="bi bi-box-arrow-right"></i> Logout</a>
@@ -62,16 +66,20 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
 </nav>
 
 <!-- Global Upload Modal -->
-<div id="globalUploadModal" class="modal" style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.8);">
-    <div class="modal-content" style="background-color:#222; margin:10% auto; padding:20px; border:1px solid #444; width:80%; max-width:600px; color:#fff; border-radius:8px;">
-        <span class="close" onclick="closeUploadModal()" style="color:#aaa; float:right; font-size:28px; font-weight:bold; cursor:pointer;">&times;</span>
+<div id="globalUploadModal" class="modal"
+    style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.8);">
+    <div class="modal-content"
+        style="background-color:#222; margin:10% auto; padding:20px; border:1px solid #444; width:80%; max-width:600px; color:#fff; border-radius:8px;">
+        <span class="close" onclick="closeUploadModal()"
+            style="color:#aaa; float:right; font-size:28px; font-weight:bold; cursor:pointer;">&times;</span>
         <h2><i class="bi bi-cloud-upload"></i> Upload Asset</h2>
         <form id="globalUploadForm" enctype="multipart/form-data">
             <div class="form-group" style="margin-bottom:15px;">
                 <label style="display:block; margin-bottom:5px;">Select Tags</label>
-                
+
                 <!-- Tag Buttons Container -->
-                <div class="tag-button-group" id="globalTagButtons" style="display:flex; flex-wrap:wrap; gap:8px; max-height:150px; overflow-y:auto; padding:5px; border:1px solid #444; border-radius:4px; background:#1a1a1a;">
+                <div class="tag-button-group" id="globalTagButtons"
+                    style="display:flex; flex-wrap:wrap; gap:8px; max-height:150px; overflow-y:auto; padding:5px; border:1px solid #444; border-radius:4px; background:#1a1a1a;">
                     <?php
                     // Ensure tags are available
                     if (!isset($tags)) {
@@ -89,29 +97,35 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
                     }
 
                     foreach ($tags_nav as $tag): ?>
-                        <button type="button" class="tag-btn" data-id="<?php echo $tag['id']; ?>" onclick="toggleGlobalTag(this)" style="padding:6px 12px; background:#333; border:1px solid #555; color:#ccc; border-radius:20px; cursor:pointer; font-size:0.9em;">
+                        <button type="button" class="tag-btn" data-id="<?php echo $tag['id']; ?>"
+                            onclick="toggleGlobalTag(this)"
+                            style="padding:6px 12px; background:#333; border:1px solid #555; color:#ccc; border-radius:20px; cursor:pointer; font-size:0.9em;">
                             <?php echo htmlspecialchars($tag['tag_name']); ?>
                         </button>
                     <?php endforeach; ?>
                 </div>
-                
+
                 <!-- Hidden Inputs Container -->
                 <div id="globalTagInputs"></div>
             </div>
 
             <div class="form-group" style="margin-bottom:15px;">
                 <label style="display:block; margin-bottom:5px;">File</label>
-                <div id="global-drop-zone" class="drop-zone" style="border: 2px dashed #666; padding: 40px; text-align: center; cursor: pointer; margin-bottom: 15px; background: #222;">
-                    <p style="font-size: 1.2em; color: var(--accent-color); margin-bottom: 10px;"><i class="bi bi-cloud-arrow-up" style="font-size: 2em;"></i><br>Drag & Drop files here</p>
+                <div id="global-drop-zone" class="drop-zone"
+                    style="border: 2px dashed #666; padding: 40px; text-align: center; cursor: pointer; margin-bottom: 15px; background: #222;">
+                    <p style="font-size: 1.2em; color: var(--accent-color); margin-bottom: 10px;"><i
+                            class="bi bi-cloud-arrow-up" style="font-size: 2em;"></i><br>Drag & Drop files here</p>
                     <p style="color: #aaa;">or click to select</p>
                     <div id="global-file-list" style="margin-top:10px; font-size:0.9em; color:#fff;"></div>
                 </div>
                 <input type="file" name="asset" id="global-file-input" required style="display:none;">
             </div>
-            <button type="submit" class="btn" style="background:var(--accent-color); color:#000; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold;">
+            <button type="submit" class="btn"
+                style="background:var(--accent-color); color:#000; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold;">
                 <i class="bi bi-upload"></i> Upload
             </button>
-            <div id="uploadStatus" class="message" style="display:none; margin-top:10px; padding:10px; border-radius:4px;"></div>
+            <div id="uploadStatus" class="message"
+                style="display:none; margin-top:10px; padding:10px; border-radius:4px;"></div>
         </form>
     </div>
 </div>
@@ -212,7 +226,7 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
             input.value = btn.dataset.id;
             container.appendChild(input);
         });
-        
+
         // Save to local storage
         const selectedIds = Array.from(activeBtns).map(btn => btn.dataset.id);
         localStorage.setItem('lastUploadTags', JSON.stringify(selectedIds));
