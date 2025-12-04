@@ -16,7 +16,14 @@ if ($is_admin || has_role('user')) {
 }
 
 $asset_id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
-$stmt = $pdo->prepare("SELECT * FROM assets WHERE id = ?");
+// Fetch asset with default tag info
+$stmt = $pdo->prepare("SELECT a.*, 
+                       GROUP_CONCAT(DISTINCT t_def.tag_name SEPARATOR ', ') as default_for_tags
+                       FROM assets a 
+                       LEFT JOIN default_assets da ON a.id = da.asset_id
+                       LEFT JOIN tags t_def ON da.tag_id = t_def.id
+                       WHERE a.id = ?
+                       GROUP BY a.id");
 $stmt->execute([$asset_id]);
 $asset = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -46,6 +53,29 @@ else {
 if (!$has_permission) {
     die("Permission denied.");
 }
+
+// Check for protection (Future Events or Default Asset)
+$is_default = !empty($asset['default_for_tags']);
+$protection_reasons = [];
+if ($is_default)
+    $protection_reasons[] = "Default Asset (" . $asset['default_for_tags'] . ")";
+
+// Check events
+$stmt_ev = $pdo->prepare("SELECT event_name FROM events WHERE asset_id = ? AND end_time >= NOW()");
+$stmt_ev->execute([$asset_id]);
+$future_events = $stmt_ev->fetchAll(PDO::FETCH_COLUMN);
+
+$stmt_rev = $pdo->prepare("SELECT event_name FROM recurring_events WHERE asset_id = ? AND (end_date IS NULL OR end_date >= CURDATE())");
+$stmt_rev->execute([$asset_id]);
+$recur_events = $stmt_rev->fetchAll(PDO::FETCH_COLUMN);
+
+foreach ($future_events as $ev)
+    $protection_reasons[] = "Assigned to " . $ev . " (Single)";
+foreach ($recur_events as $ev)
+    $protection_reasons[] = "Assigned to " . $ev . " (Recurring)";
+
+$is_protected = !empty($protection_reasons);
+$protection_tooltip = "Cannot delete: " . implode('; ', $protection_reasons);
 
 $errors = [];
 $success_message = '';
@@ -109,25 +139,31 @@ $all_tags = $stmt_all_tags->fetchAll(PDO::FETCH_ASSOC);
         </div>
         <div style="display:flex; align-items:center; gap:15px; margin-bottom: 20px;">
             <h1 style="margin:0;">Edit Asset</h1>
-            <?php if ($has_permission && empty($asset['default_for_tags'])): ?>
-                <form action="manage_assets.php" method="POST"
-                    onsubmit="return confirm('Delete this asset? This cannot be undone.');" style="margin:0;">
-                    <input type="hidden" name="action" value="delete_asset">
-                    <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
-                    <button type="submit" class="btn-delete" style="padding: 5px 10px; font-size: 0.8em; width:auto;">Delete
-                        Asset</button>
-                </form>
+            <?php if ($has_permission): ?>
+                    <?php if ($is_protected): ?>
+                            <button type="button" class="btn-delete" disabled 
+                                    title="<?php echo htmlspecialchars($protection_tooltip); ?>"
+                                    style="padding: 5px 10px; font-size: 0.8em; width:auto; opacity: 0.5; cursor: not-allowed;">Delete Asset</button>
+                    <?php else: ?>
+                            <form action="manage_assets.php" method="POST"
+                                onsubmit="return confirm('Delete this asset? This cannot be undone.');" style="margin:0;">
+                                <input type="hidden" name="action" value="delete_asset">
+                                <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
+                                <button type="submit" class="btn-delete" style="padding: 5px 10px; font-size: 0.8em; width:auto;">Delete
+                                    Asset</button>
+                            </form>
+                    <?php endif; ?>
             <?php endif; ?>
         </div>
 
         <?php if (!empty($errors)): ?>
-            <div class="message error">
-                <ul><?php foreach ($errors as $e)
-                    echo "<li>$e</li>"; ?></ul>
-            </div>
+                <div class="message error">
+                    <ul><?php foreach ($errors as $e)
+                        echo "<li>$e</li>"; ?></ul>
+                </div>
         <?php endif; ?>
         <?php if ($success_message): ?>
-            <div class="message success"><?php echo $success_message; ?></div>
+                <div class="message success"><?php echo $success_message; ?></div>
         <?php endif; ?>
 
         <div class="card">
@@ -148,11 +184,11 @@ $all_tags = $stmt_all_tags->fetchAll(PDO::FETCH_ASSOC);
                     <label>Tags</label>
                     <div class="tag-toggle-group">
                         <?php foreach ($all_tags as $tag): ?>
-                            <label class="tag-toggle <?php echo in_array($tag['id'], $current_tag_ids) ? 'active' : ''; ?>"
-                                onclick="this.classList.toggle('active')">
-                                <?php echo htmlspecialchars($tag['tag_name']); ?>
-                                <input type="checkbox" name="tag_ids[]" value="<?php echo $tag['id']; ?>" <?php echo in_array($tag['id'], $current_tag_ids) ? 'checked' : ''; ?>>
-                            </label>
+                                <label class="tag-toggle <?php echo in_array($tag['id'], $current_tag_ids) ? 'active' : ''; ?>"
+                                    onclick="this.classList.toggle('active')">
+                                    <?php echo htmlspecialchars($tag['tag_name']); ?>
+                                    <input type="checkbox" name="tag_ids[]" value="<?php echo $tag['id']; ?>" <?php echo in_array($tag['id'], $current_tag_ids) ? 'checked' : ''; ?>>
+                                </label>
                         <?php endforeach; ?>
                     </div>
                 </div>
