@@ -100,6 +100,11 @@ if (!$has_permission) {
     die("You do not have permission to edit events for these tags.");
 }
 
+// Prepare Back Params
+$back_params = $_GET;
+unset($back_params['id']);
+$back_query = http_build_query($back_params);
+
 // Check if Series
 $is_series = false;
 if ($is_generated || !empty($event['recurring_event_id'])) {
@@ -297,7 +302,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
         }
 
         $pdo->commit();
-        header("Location: index.php");
+        header("Location: index.php?" . $back_query);
         exit;
 
     } catch (Exception $e) {
@@ -577,7 +582,7 @@ if ($event['asset_id'] > 0) {
             </div>
         <?php endif; ?>
         <div class="card">
-            <form action="edit_event.php?id=<?php echo $event_id; ?>" method="POST">
+            <form action="edit_event.php?<?php echo $_SERVER['QUERY_STRING']; ?>" method="POST">
                 <input type="hidden" name="action" value="update_event">
 
                 <div class="form-group">
@@ -682,7 +687,7 @@ if ($event['asset_id'] > 0) {
                 <a href="create_event.php?duplicate_id=<?php echo $event_id; ?>" class="btn btn-secondary"
                     style="text-align:center; flex:1;">Duplicate Event</a>
 
-                <form action="edit_event.php?id=<?php echo $event_id; ?>" method="POST"
+                <form action="edit_event.php?<?php echo $_SERVER['QUERY_STRING']; ?>" method="POST"
                     onsubmit="return confirm('Delete this event?');" style="flex:1;">
                     <input type="hidden" name="action" value="delete_event">
 

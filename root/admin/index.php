@@ -38,7 +38,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if (in_array($evt_tag, $allowed_tag_ids)) {
             $now_utc = (new DateTime())->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
             $pdo->prepare("UPDATE events SET end_time = ? WHERE id = ?")->execute([$now_utc, $event_id]);
-            header("Location: index.php");
+            header("Location: " . $_SERVER['REQUEST_URI']);
             exit;
         }
     }
@@ -53,7 +53,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($evt && in_array($evt['tag_id'], $allowed_tag_ids)) {
             $new_end = date('Y-m-d H:i:s', strtotime($evt['end_time'] . ' +15 minutes'));
             $pdo->prepare("UPDATE events SET end_time = ? WHERE id = ?")->execute([$new_end, $event_id]);
-            header("Location: index.php");
+            header("Location: " . $_SERVER['REQUEST_URI']);
             exit;
         }
     }
@@ -73,7 +73,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         if ($has_perm) {
             $pdo->prepare("DELETE FROM events WHERE id = ?")->execute([$event_id]);
-            header("Location: index.php");
+            header("Location: " . $_SERVER['REQUEST_URI']);
             exit;
         }
     }
@@ -275,6 +275,23 @@ if ($view == 'list') {
         setTimeout(function () {
             window.location.reload();
         }, 60000);
+
+        // Scroll Preservation
+        document.addEventListener("DOMContentLoaded", function() {
+            var scrollPos = sessionStorage.getItem('scrollPos');
+            if (scrollPos) {
+                window.scrollTo(0, scrollPos);
+                sessionStorage.removeItem('scrollPos');
+            }
+            
+            // Bind saveScroll to all forms
+            var forms = document.querySelectorAll('form');
+            forms.forEach(function(f) {
+                f.addEventListener('submit', function() {
+                    sessionStorage.setItem('scrollPos', window.scrollY);
+                });
+            });
+        });
     </script>
 </head>
 
@@ -407,25 +424,26 @@ if ($view == 'list') {
                 </thead>
                 <tbody>
                 <tbody>
-                    <?php foreach ($events as $ev): 
+                    <?php foreach ($events as $ev):
                         $is_series = isset($ev['type']) && $ev['type'] == 'series';
                         $is_exception = !empty($ev['is_exception']);
-                        
+
                         if ($is_series) {
                             $status = 'Recurring';
                             $status_color = 'var(--accent-color)';
                             $start_display = 'Starts: ' . $ev['start_date'];
-                            
+
                             // Recurrence Pattern
                             $recur_info = ucfirst($ev['recurrence_type']);
                             if ($ev['recurrence_type'] == 'weekly' && !empty($ev['recurrence_days'])) {
                                 $days_map = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                                 $days = explode(',', $ev['recurrence_days']);
-                                $day_names = array_map(function($d) use ($days_map) { return $days_map[$d]; }, $days);
+                                $day_names = array_map(function ($d) use ($days_map) {
+                                    return $days_map[$d]; }, $days);
                                 $recur_info .= ' (' . implode(', ', $day_names) . ')';
                             }
                             $end_display = $recur_info . '<br>Time: ' . $ev['start_time'];
-                            
+
                             $edit_link = "edit_event.php?id=recur_" . $ev['id'] . "_0"; // 0 timestamp for series edit? Or just recur_ID
                             // Actually edit_event expects recur_{id}_{timestamp} for instances.
                             // But for editing the SERIES definition, we might need a different way or just pick a dummy timestamp.
@@ -453,20 +471,20 @@ if ($view == 'list') {
                                 $status = 'Live';
                                 $status_color = 'var(--error-color)';
                             }
-                            
+
                             if ($is_exception) {
                                 $status = 'Exception';
                                 $status_color = 'orange';
                             }
-                            
+
                             $start_local = $start->setTimezone(new DateTimeZone('America/New_York'));
                             $format = ($start_local->format('Y') != date('Y')) ? 'M j, Y, g:i A' : 'M j, g:i A';
                             $start_display = $start_local->format($format);
-                            
+
                             $end_local = $end->setTimezone(new DateTimeZone('America/New_York'));
                             $format = ($end_local->format('Y') != date('Y')) ? 'M j, Y, g:i A' : 'M j, g:i A';
                             $end_display = $end_local->format($format);
-                            
+
                             $edit_link = "edit_event.php?id=" . $ev['id'] . "&" . http_build_query($_GET);
                         }
                         ?>
@@ -510,7 +528,7 @@ if ($view == 'list') {
                             <td><?php echo htmlspecialchars($ev['filename_original'] ?? 'N/A'); ?></td>
                             <td>
                                 <a href="<?php echo $edit_link; ?>" class="btn btn-sm btn-secondary">Edit</a>
-                                
+
                                 <?php if (!$is_series && $status != 'Live'): ?>
                                     <form method="POST" style="display:inline;" onsubmit="return confirm('Delete?');">
                                         <input type="hidden" name="action" value="delete_event">
