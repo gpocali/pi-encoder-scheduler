@@ -72,10 +72,11 @@ class EventRepository
     public function getRecurringSeries($tagId = null)
     {
         $sql = "
-            SELECT re.*, GROUP_CONCAT(t.tag_name SEPARATOR ', ') as tag_names, GROUP_CONCAT(t.id) as tag_ids
+            SELECT re.*, a.filename_original, GROUP_CONCAT(t.tag_name SEPARATOR ', ') as tag_names, GROUP_CONCAT(t.id) as tag_ids
             FROM recurring_events re
             LEFT JOIN recurring_event_tags ret ON re.id = ret.recurring_event_id
             LEFT JOIN tags t ON ret.tag_id = t.id
+            LEFT JOIN assets a ON re.asset_id = a.id
         ";
 
         $params = [];
@@ -218,17 +219,19 @@ class EventRepository
     {
         if ($groupByEvent) {
             $sql = "
-                SELECT e.*, GROUP_CONCAT(t.tag_name SEPARATOR ', ') as tag_names, GROUP_CONCAT(t.id) as tag_ids
+                SELECT e.*, a.filename_original, GROUP_CONCAT(t.tag_name SEPARATOR ', ') as tag_names, GROUP_CONCAT(t.id) as tag_ids
                 FROM events e
                 LEFT JOIN event_tags et ON e.id = et.event_id
                 LEFT JOIN tags t ON et.tag_id = t.id
+                LEFT JOIN assets a ON e.asset_id = a.id
                 WHERE e.end_time >= ? AND e.start_time <= ?
             ";
         } else {
             $sql = "
-                SELECT e.*, et.tag_id
+                SELECT e.*, a.filename_original, et.tag_id
                 FROM events e
                 LEFT JOIN event_tags et ON e.id = et.event_id
+                LEFT JOIN assets a ON e.asset_id = a.id
                 WHERE e.end_time >= ? AND e.start_time <= ?
             ";
         }
@@ -253,18 +256,20 @@ class EventRepository
     {
         if ($groupByEvent) {
             $sql = "
-                SELECT re.*, GROUP_CONCAT(t.tag_name SEPARATOR ', ') as tag_names, GROUP_CONCAT(t.id) as tag_ids
+                SELECT re.*, a.filename_original, GROUP_CONCAT(t.tag_name SEPARATOR ', ') as tag_names, GROUP_CONCAT(t.id) as tag_ids
                 FROM recurring_events re
                 LEFT JOIN recurring_event_tags ret ON re.id = ret.recurring_event_id
                 LEFT JOIN tags t ON ret.tag_id = t.id
+                LEFT JOIN assets a ON re.asset_id = a.id
                 WHERE re.start_date <= ? 
                   AND (re.end_date IS NULL OR re.end_date >= ?)
             ";
         } else {
             $sql = "
-                SELECT re.*, ret.tag_id
+                SELECT re.*, a.filename_original, ret.tag_id
                 FROM recurring_events re
                 LEFT JOIN recurring_event_tags ret ON re.id = ret.recurring_event_id
+                LEFT JOIN assets a ON re.asset_id = a.id
                 WHERE re.start_date <= ? 
                   AND (re.end_date IS NULL OR re.end_date >= ?)
             ";
