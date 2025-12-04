@@ -170,7 +170,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
     $end_time_val = $_POST['end_time'];
     $priority = (int) $_POST['priority'];
     $asset_id = (int) $_POST['existing_asset_id'];
-    $update_scope = $_POST['update_scope'] ?? 'only_this';
+    $update_scope = $_POST['update_scope'] ?? 'all'; // Default to 'all' to match UI and user expectation
     $selected_tag_ids = $_POST['tag_ids'] ?? [];
 
     // Recurrence Params
