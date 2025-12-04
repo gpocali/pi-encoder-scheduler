@@ -546,6 +546,9 @@ if ($view == 'list') {
                             $edit_link = "edit_event.php?id=" . $ev['id'] . "&" . http_build_query($_GET);
                         }
                         ?>
+                        <?php
+                        $is_default_gap = isset($ev['type']) && $ev['type'] == 'default_gap';
+                        ?>
                         <tr>
                             <td><span
                                     style="color:<?php echo $status_color; ?>; font-weight:bold;"><?php echo $status; ?></span>
@@ -560,6 +563,9 @@ if ($view == 'list') {
                                 } elseif ($ev['priority'] == 1) {
                                     $prio_label = 'Medium';
                                     $prio_class = 'p-1';
+                                } elseif ($ev['priority'] == -1) {
+                                    $prio_label = 'None';
+                                    $prio_class = 'p-0';
                                 }
                                 ?>
                                 <span class="priority-badge <?php echo $prio_class; ?>"><?php echo $prio_label; ?></span>
@@ -572,7 +578,7 @@ if ($view == 'list') {
                                 // Tags might be pre-fetched in 'tag_names' for series/one-offs by Repository
                                 if (isset($ev['tag_names'])) {
                                     echo htmlspecialchars($ev['tag_names']);
-                                } else {
+                                } elseif (!$is_default_gap) {
                                     // Fallback query
                                     $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
                                     $stmt_t->execute([$ev['id']]);
@@ -585,23 +591,35 @@ if ($view == 'list') {
                             <td><?php echo $end_display; ?></td>
                             <td><?php echo htmlspecialchars($ev['filename_original'] ?? 'N/A'); ?></td>
                             <td>
-                                <a href="<?php echo $edit_link; ?>" class="btn btn-sm btn-secondary">Edit</a>
+                                <?php if ($is_default_gap): ?>
+                                    <?php
+                                    // Link to create event with pre-filled start time
+                                    // $start_local is available from the 'else' block above? 
+                                    // Wait, the 'else' block above (lines 517-547) handles one-offs AND default gaps (since is_series is false).
+                                    // So $start_local is set.
+                                    $add_url = "create_event.php?start_date=" . $start_local->format('Y-m-d') . "&start_time=" . $start_local->format('H:i');
+                                    ?>
+                                    <a href="<?php echo $add_url; ?>" class="btn btn-sm"
+                                        style="background:var(--success-color); color:#fff;">Add Event</a>
+                                <?php else: ?>
+                                    <a href="<?php echo $edit_link; ?>" class="btn btn-sm btn-secondary">Edit</a>
 
-                                <?php if (!$is_series && $status != 'Live'): ?>
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Delete?');">
-                                        <input type="hidden" name="action" value="delete_event">
-                                        <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
-                                        <button type="submit"
-                                            style="background:none; border:none; color:var(--error-color); cursor:pointer; padding:0;">Delete</button>
-                                    </form>
-                                <?php elseif ($status == 'Live'): ?>
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('End this event now?');">
-                                        <input type="hidden" name="action" value="end_now">
-                                        <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
-                                        <button type="submit"
-                                            style="background:var(--error-color); color:#fff; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:0.8em;">End
-                                            Now</button>
-                                    </form>
+                                    <?php if (!$is_series && $status != 'Live'): ?>
+                                        <form method="POST" style="display:inline;" onsubmit="return confirm('Delete?');">
+                                            <input type="hidden" name="action" value="delete_event">
+                                            <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
+                                            <button type="submit"
+                                                style="background:none; border:none; color:var(--error-color); cursor:pointer; padding:0;">Delete</button>
+                                        </form>
+                                    <?php elseif ($status == 'Live'): ?>
+                                        <form method="POST" style="display:inline;" onsubmit="return confirm('End this event now?');">
+                                            <input type="hidden" name="action" value="end_now">
+                                            <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
+                                            <button type="submit"
+                                                style="background:none; border:none; color:var(--error-color); cursor:pointer; padding:0;">End
+                                                Now</button>
+                                        </form>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                             </td>
                         </tr>
