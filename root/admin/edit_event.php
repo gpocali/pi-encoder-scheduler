@@ -250,11 +250,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
 
                     if ($recurrence == 'none') {
                         // Create One-off
-                        $sql_one = "INSERT INTO events (event_name, start_time, end_time, asset_id, priority) VALUES (?, ?, ?, ?, ?)";
+                        // Legacy tag_id required
+                        $primary_tag = $selected_tag_ids[0];
+                        $sql_one = "INSERT INTO events (event_name, start_time, end_time, asset_id, priority, tag_id) VALUES (?, ?, ?, ?, ?, ?)";
                         $stmt_one = $pdo->prepare($sql_one);
-                        $stmt_one->execute([$event_name, $start_utc, $end_utc, $asset_id, $priority]);
+                        $stmt_one->execute([$event_name, $start_utc, $end_utc, $asset_id, $priority, $primary_tag]);
                         $new_id = $pdo->lastInsertId();
-                        
+
                         // Tags
                         $stmt_tags = $pdo->prepare("INSERT INTO event_tags (event_id, tag_id) VALUES (?, ?)");
                         foreach ($selected_tag_ids as $tid) {
@@ -288,14 +290,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                     }
                 } elseif ($update_scope == 'all') {
                     if ($recurrence == 'none') {
-                        // Convert to One-off: Delete Series, Create Event
-                        $pdo->prepare("DELETE FROM recurring_events WHERE id = ?")->execute([$recur_id]);
-                        
-                        $sql_one = "INSERT INTO events (event_name, start_time, end_time, asset_id, priority) VALUES (?, ?, ?, ?, ?)";
+                        // Create One-off
+                        // Legacy tag_id required
+                        $primary_tag = $selected_tag_ids[0];
+                        $sql_one = "INSERT INTO events (event_name, start_time, end_time, asset_id, priority, tag_id) VALUES (?, ?, ?, ?, ?, ?)";
                         $stmt_one = $pdo->prepare($sql_one);
-                        $stmt_one->execute([$event_name, $start_utc, $end_utc, $asset_id, $priority]);
+                        $stmt_one->execute([$event_name, $start_utc, $end_utc, $asset_id, $priority, $primary_tag]);
                         $new_id = $pdo->lastInsertId();
-                        
+
                         $stmt_tags = $pdo->prepare("INSERT INTO event_tags (event_id, tag_id) VALUES (?, ?)");
                         foreach ($selected_tag_ids as $tid) {
                             $stmt_tags->execute([$new_id, $tid]);
@@ -303,7 +305,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                     } else {
                         // Update Entire Series
                         $duration = $end_dt->getTimestamp() - $start_dt->getTimestamp();
-                        
+
                         $sql_upd = "UPDATE recurring_events SET 
                                     event_name = ?, 
                                     start_time = ?, 
@@ -326,7 +328,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                             $priority,
                             $recur_id
                         ]);
-                        
+
                         // Update Tags
                         $pdo->prepare("DELETE FROM recurring_event_tags WHERE recurring_event_id = ?")->execute([$recur_id]);
                         $stmt_ret = $pdo->prepare("INSERT INTO recurring_event_tags (recurring_event_id, tag_id) VALUES (?, ?)");
@@ -827,9 +829,14 @@ if ($event['asset_id'] > 0) {
                             <select name="update_scope" id="update_scope"
                                 style="padding: 10px; background: #333; color: #fff; border: 1px solid #444; border-radius: 4px;">
                                 <?php $scope = $_POST['update_scope'] ?? 'all'; ?>
-                                <option value="all" <?php if ($scope == 'all') echo 'selected'; ?>>Entire Series</option>
-                                <option value="future" <?php if ($scope == 'future') echo 'selected'; ?>>This & Future</option>
-                                <option value="only_this" <?php if ($scope == 'only_this') echo 'selected'; ?>>Only This Instance</option>
+                                <option value="all" <?php if ($scope == 'all')
+                                    echo 'selected'; ?>>Entire Series</option>
+                                <option value="future" <?php if ($scope == 'future')
+                                    echo 'selected'; ?>>This & Future
+                                </option>
+                                <option value="only_this" <?php if ($scope == 'only_this')
+                                    echo 'selected'; ?>>Only This
+                                    Instance</option>
                             </select>
                         </div>
                     <?php endif; ?>
