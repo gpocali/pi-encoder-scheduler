@@ -160,13 +160,15 @@
                 <input type="text" id="selected_asset_name" readonly
                     value="<?php echo htmlspecialchars($selected_asset_name); ?>"
                     style="flex:1; background:#333; border:1px solid #444; color:#fff; padding:8px;">
-                <button type="button" class="btn btn-secondary" onclick="openAssetModal()" <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>Select Asset</button>
+                <?php if (!isset($is_read_only) || !$is_read_only): ?>
+                    <button type="button" class="btn btn-secondary" onclick="openAssetModal()">Select Asset</button>
+                <?php endif; ?>
             </div>
             <div id="asset-warning" style="color:orange; display:none; margin-top:5px;"></div>
         </div>
 
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:nowrap;">
-            <?php if ($is_edit && $is_series): ?>
+            <?php if ($is_edit && $is_series && (!isset($is_read_only) || !$is_read_only)): ?>
                 <div style="display:flex; align-items:center; gap:5px; white-space:nowrap;">
                     <label for="update_scope" style="margin:0;">Update Scope:</label>
                     <select name="update_scope" id="update_scope"
