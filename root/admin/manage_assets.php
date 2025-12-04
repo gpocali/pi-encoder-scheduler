@@ -287,7 +287,7 @@ if (!function_exists('formatBytes')) {
                     data-name="<?php echo htmlspecialchars(strtolower($asset['display_name'] ?? $asset['filename_original'])); ?>"
                     data-tags="<?php echo htmlspecialchars(strtolower($tag_display)); ?>"
                     data-events="<?php echo htmlspecialchars(strtolower($events_list_str)); ?>"
-                    style="padding: 1em; margin-bottom: 0; display: flex; flex-direction: column; height: 100%;">
+                    style="padding: 1em; margin-bottom: 0; display: flex; flex-direction: column; height: 100%; box-sizing: border-box;">
                     <?php
                     $file_url = 'serve_asset.php?id=' . $asset['id'];
                     $is_image = strpos($asset['mime_type'], 'image') !== false;
