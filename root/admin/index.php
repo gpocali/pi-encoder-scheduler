@@ -128,7 +128,9 @@ require_once 'includes/EventRepository.php';
 $view = $_GET['view'] ?? 'list';
 $filter_tag = isset($_GET['tag_id']) && $_GET['tag_id'] !== '' ? (int) $_GET['tag_id'] : null;
 $filter_date = $_GET['date'] ?? date('Y-m-d');
-$hide_past = isset($_GET['hide_past']) ? (bool) $_GET['hide_past'] : false;
+$filter_type = $_GET['type'] ?? 'all';
+$sort_col = $_GET['sort'] ?? 'start_time';
+$sort_order = $_GET['order'] ?? 'asc';
 $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
 $per_page = 20;
 
@@ -142,37 +144,67 @@ if ($view == 'list') {
     $series = $repo->getRecurringSeries($filter_tag);
 
     // 2. Get Future One-Offs (and Exceptions)
-    // We want one-offs that are NOT exceptions to be shown normally.
-    // Exceptions should be shown? User said "Exceptions to recurring events (as separate entries)".
-    // So yes, fetch all future events.
     $oneOffs = $repo->getFutureEvents($filter_tag);
 
-    // Merge: Series first, then One-Offs (sorted by start time)
-    // Actually, user might want them mixed by start date?
-    // Series have a start_date. One-offs have start_time.
-    // Let's put Series at the top (Active Recurring Series), then Future Events.
-    // Or just one big list sorted by date.
-    // "Consolidated list view to show only future one-off events, active recurring series, and exceptions."
-
-    // Let's combine and sort by start date/time.
+    // Merge and Filter
     $combined = [];
-    foreach ($series as $s) {
-        $s['type'] = 'series';
-        $s['sort_time'] = $s['start_date'] . ' ' . $s['start_time']; // approximate
-        $combined[] = $s;
+
+    // Process Series
+    if ($filter_type == 'all' || $filter_type == 'recurring') {
+        foreach ($series as $s) {
+            $s['type'] = 'series';
+            $s['sort_time'] = $s['start_date'] . ' ' . $s['start_time'];
+            $combined[] = $s;
+        }
     }
-    foreach ($oneOffs as $e) {
-        $e['type'] = 'event';
-        // One-off start_time is UTC. Convert to Local for sorting comparison.
-        $dt = new DateTime($e['start_time'], new DateTimeZone('UTC'));
-        $dt->setTimezone(new DateTimeZone('America/New_York'));
-        $e['sort_time'] = $dt->format('Y-m-d H:i:s');
-        $combined[] = $e;
+
+    // Process One-Offs
+    if ($filter_type == 'all' || $filter_type == 'one_off') {
+        foreach ($oneOffs as $e) {
+            $e['type'] = 'event';
+            $dt = new DateTime($e['start_time'], new DateTimeZone('UTC'));
+            $dt->setTimezone(new DateTimeZone('America/New_York'));
+            $e['sort_time'] = $dt->format('Y-m-d H:i:s');
+            $combined[] = $e;
+        }
     }
 
     // Sort
-    usort($combined, function ($a, $b) {
-        return strcmp($a['sort_time'], $b['sort_time']);
+    usort($combined, function ($a, $b) use ($sort_col, $sort_order) {
+        $valA = '';
+        $valB = '';
+
+        switch ($sort_col) {
+            case 'status':
+                // Determine status string for sorting
+                $valA = isset($a['type']) && $a['type'] == 'series' ? 'Recurring' : 'Future'; // Simplified
+                $valB = isset($b['type']) && $b['type'] == 'series' ? 'Recurring' : 'Future';
+                break;
+            case 'priority':
+                $valA = $a['priority'];
+                $valB = $b['priority'];
+                break;
+            case 'name':
+                $valA = strtolower($a['event_name']);
+                $valB = strtolower($b['event_name']);
+                break;
+            case 'start_time':
+            default:
+                $valA = $a['sort_time'];
+                $valB = $b['sort_time'];
+                break;
+        }
+
+        if ($valA == $valB)
+            return 0;
+
+        // Numeric comparison for priority
+        if ($sort_col == 'priority') {
+            return ($sort_order == 'asc') ? ($valA - $valB) : ($valB - $valA);
+        }
+
+        // String comparison for others
+        return ($sort_order == 'asc') ? strcmp($valA, $valB) : strcmp($valB, $valA);
     });
 
     // Pagination (PHP side)
@@ -182,20 +214,14 @@ if ($view == 'list') {
     $events = array_slice($combined, $offset, $per_page);
 
 } elseif ($view == 'month') {
+    // ... (rest of month view logic remains same, just need to close the if block correctly later)
     $start_month = date('Y-m-01', strtotime($filter_date));
     $end_month = date('Y-m-t', strtotime($filter_date));
-
-    // Expand range slightly to cover full weeks if needed, but strict month is fine for now
-    // UTC conversion happens inside getEvents if we pass local dates? 
-    // EventRepository expects Y-m-d H:i:s strings.
-    // Let's pass full UTC range for the month.
 
     $start_utc = (new DateTime($start_month . ' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
     $end_utc = (new DateTime($end_month . ' 23:59:59'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
     $raw_events = $repo->getEvents($start_utc, $end_utc, $filter_tag);
-
-    // Resolve Schedule
     $resolved = ScheduleLogic::resolveSchedule($raw_events);
 
     // Group by day
@@ -220,6 +246,7 @@ if ($view == 'list') {
     }
 
 } elseif ($view == 'week') {
+    // ... (rest of week view logic)
     $dt = new DateTime($filter_date);
     if ($dt->format('w') != 0) {
         $dt->modify('last sunday');
@@ -382,17 +409,21 @@ if ($view == 'list') {
                     <?php endforeach; ?>
                 </select>
 
+                <?php if ($view == 'list'): ?>
+                    <select name="type" onchange="this.form.submit()">
+                        <option value="all" <?php if ($filter_type == 'all')
+                            echo 'selected'; ?>>All Types</option>
+                        <option value="recurring" <?php if ($filter_type == 'recurring')
+                            echo 'selected'; ?>>Recurring Only
+                        </option>
+                        <option value="one_off" <?php if ($filter_type == 'one_off')
+                            echo 'selected'; ?>>One-off Only</option>
+                    </select>
+                <?php endif; ?>
+
                 <?php if ($view != 'list'): ?>
                     <input type="date" name="date" value="<?php echo $filter_date; ?>" onchange="this.form.submit()">
                 <?php endif; ?>
-
-                <label
-                    style="margin-left:10px; display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap;">
-                    <input type="checkbox" name="hide_past" value="1" <?php if ($hide_past)
-                        echo 'checked'; ?>
-                        onchange="this.form.submit()">
-                    Hide Past Events
-                </label>
             </form>
 
             <a href="create_event.php?<?php echo http_build_query($_GET); ?>" class="btn btn-secondary">+ New Event</a>
@@ -415,11 +446,23 @@ if ($view == 'list') {
             <table>
                 <thead>
                     <tr>
-                        <th>Status</th>
-                        <th>Priority</th>
-                        <th>Event Name</th>
+                        <th><a href="<?php echo urlWithParam('sort', 'status') . '&order=' . ($sort_col == 'status' && $sort_order == 'asc' ? 'desc' : 'asc'); ?>"
+                                style="color:inherit; text-decoration:none;">Status
+                                <?php if ($sort_col == 'status')
+                                    echo $sort_order == 'asc' ? '▲' : '▼'; ?></a></th>
+                        <th><a href="<?php echo urlWithParam('sort', 'priority') . '&order=' . ($sort_col == 'priority' && $sort_order == 'asc' ? 'desc' : 'asc'); ?>"
+                                style="color:inherit; text-decoration:none;">Priority
+                                <?php if ($sort_col == 'priority')
+                                    echo $sort_order == 'asc' ? '▲' : '▼'; ?></a></th>
+                        <th><a href="<?php echo urlWithParam('sort', 'name') . '&order=' . ($sort_col == 'name' && $sort_order == 'asc' ? 'desc' : 'asc'); ?>"
+                                style="color:inherit; text-decoration:none;">Event Name
+                                <?php if ($sort_col == 'name')
+                                    echo $sort_order == 'asc' ? '▲' : '▼'; ?></a></th>
                         <th>Tag</th>
-                        <th>Start Time</th>
+                        <th><a href="<?php echo urlWithParam('sort', 'start_time') . '&order=' . ($sort_col == 'start_time' && $sort_order == 'asc' ? 'desc' : 'asc'); ?>"
+                                style="color:inherit; text-decoration:none;">Start Time
+                                <?php if ($sort_col == 'start_time')
+                                    echo $sort_order == 'asc' ? '▲' : '▼'; ?></a></th>
                         <th>End Time</th>
                         <th>Asset</th>
                         <th>Actions</th>
