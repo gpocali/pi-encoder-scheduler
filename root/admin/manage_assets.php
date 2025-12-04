@@ -371,13 +371,37 @@ if (!function_exists('formatBytes')) {
         // Preview Logic
         function showPreview(url, type) {
             const container = document.getElementById('previewContainer');
-            container.innerHTML = '';
-            if (type.includes('image')) {
-                container.innerHTML = '<img src="' + url + '" class="preview-media">';
-            } else if (type.includes('video')) {
-                container.innerHTML = '<video src="' + url + '" controls autoplay class="preview-media"></video>';
-            }
+            container.innerHTML = '<div id="previewLoader" style="color: #fff; font-size: 1.2em; padding: 20px;">Loading preview...</div>';
             document.getElementById('previewModal').style.display = 'block';
+
+            let mediaElement;
+            if (type.includes('image')) {
+                mediaElement = new Image();
+                mediaElement.src = url;
+                mediaElement.className = 'preview-media';
+                mediaElement.style.display = 'none';
+                mediaElement.onload = function () {
+                    const loader = document.getElementById('previewLoader');
+                    if (loader) loader.remove();
+                    this.style.display = 'block';
+                };
+            } else if (type.includes('video')) {
+                mediaElement = document.createElement('video');
+                mediaElement.src = url;
+                mediaElement.controls = true;
+                mediaElement.autoplay = true;
+                mediaElement.className = 'preview-media';
+                mediaElement.style.display = 'none';
+                mediaElement.onloadeddata = function () {
+                    const loader = document.getElementById('previewLoader');
+                    if (loader) loader.remove();
+                    this.style.display = 'block';
+                };
+            }
+
+            if (mediaElement) {
+                container.appendChild(mediaElement);
+            }
         }
 
         // Search Logic
