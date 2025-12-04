@@ -163,7 +163,10 @@ if ($view == 'list') {
     }
     foreach ($oneOffs as $e) {
         $e['type'] = 'event';
-        $e['sort_time'] = $e['start_time'];
+        // One-off start_time is UTC. Convert to Local for sorting comparison.
+        $dt = new DateTime($e['start_time'], new DateTimeZone('UTC'));
+        $dt->setTimezone(new DateTimeZone('America/New_York'));
+        $e['sort_time'] = $dt->format('Y-m-d H:i:s');
         $combined[] = $e;
     }
 
@@ -277,17 +280,17 @@ if ($view == 'list') {
         }, 60000);
 
         // Scroll Preservation
-        document.addEventListener("DOMContentLoaded", function() {
+        document.addEventListener("DOMContentLoaded", function () {
             var scrollPos = sessionStorage.getItem('scrollPos');
             if (scrollPos) {
                 window.scrollTo(0, scrollPos);
                 sessionStorage.removeItem('scrollPos');
             }
-            
+
             // Bind saveScroll to all forms
             var forms = document.querySelectorAll('form');
-            forms.forEach(function(f) {
-                f.addEventListener('submit', function() {
+            forms.forEach(function (f) {
+                f.addEventListener('submit', function () {
                     sessionStorage.setItem('scrollPos', window.scrollY);
                 });
             });
@@ -439,10 +442,13 @@ if ($view == 'list') {
                                 $days_map = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                                 $days = explode(',', $ev['recurrence_days']);
                                 $day_names = array_map(function ($d) use ($days_map) {
-                                    return $days_map[$d]; }, $days);
+                                    return $days_map[$d];
+                                }, $days);
                                 $recur_info .= ' (' . implode(', ', $day_names) . ')';
                             }
-                            $end_display = $recur_info . '<br>Time: ' . $ev['start_time'];
+                            // Format Time to AM/PM
+                            $time_obj = new DateTime($ev['start_time']); // Local time string
+                            $end_display = $recur_info . '<br>Time: ' . $time_obj->format('g:i A');
 
                             $edit_link = "edit_event.php?id=recur_" . $ev['id'] . "_0"; // 0 timestamp for series edit? Or just recur_ID
                             // Actually edit_event expects recur_{id}_{timestamp} for instances.

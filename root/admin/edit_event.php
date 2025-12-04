@@ -25,8 +25,16 @@ if (strpos($event_id_param, 'recur_') === 0) {
     if ($recur_row) {
         $is_generated = true;
         // Construct fake event
-        $start_dt = new DateTime('@' . $ts); // UTC timestamp
-        $start_dt->setTimezone(new DateTimeZone('UTC'));
+        if ($ts == 0) {
+            // Series Edit Mode: Use original series start
+            // recur_row start_time/date are Local
+            $local_dt = new DateTime($recur_row['start_date'] . ' ' . $recur_row['start_time'], new DateTimeZone('America/New_York'));
+            $start_dt = clone $local_dt;
+            $start_dt->setTimezone(new DateTimeZone('UTC'));
+        } else {
+            $start_dt = new DateTime('@' . $ts); // UTC timestamp
+            $start_dt->setTimezone(new DateTimeZone('UTC'));
+        }
 
         $end_dt = clone $start_dt;
         $end_dt->modify("+{$recur_row['duration']} seconds");
