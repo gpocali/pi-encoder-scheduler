@@ -517,6 +517,16 @@ if ($event['asset_id'] > 0) {
             <?php endif; ?>
         </div>
 
+        <?php if (!empty($errors)): ?>
+            <div class="message error">
+                <ul><?php foreach ($errors as $e)
+                    echo "<li>$e</li>"; ?></ul>
+            </div>
+        <?php endif; ?>
+        <?php if ($success_message): ?>
+            <div class="message success"><?php echo $success_message; ?></div>
+        <?php endif; ?>
+
         <?php include 'includes/event_form.php'; ?>
     </div>
 
