@@ -608,6 +608,23 @@ if ($view == 'list') {
                                     <a href="<?php echo $add_url; ?>" class="btn btn-sm"
                                         style="background-color: #28a745; color: #fff; border: none;">Add Event</a>
                                 <?php else: ?>
+                                    <?php if ($status == 'Live'): ?>
+                                        <form method="POST" style="display:inline;" onsubmit="return confirm('End this event now?');">
+                                            <input type="hidden" name="action" value="end_now">
+                                            <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
+                                            <button type="submit" class="btn btn-sm"
+                                                style="background-color:var(--error-color); color:#fff; border:none; margin-right:5px;">End
+                                                Now</button>
+                                        </form>
+                                        <form method="POST" style="display:inline;">
+                                            <input type="hidden" name="action" value="extend_event">
+                                            <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
+                                            <button type="submit" class="btn btn-sm"
+                                                style="background-color: #17a2b8; color: #fff; border: none; margin-right:5px;">+15
+                                                Min</button>
+                                        </form>
+                                    <?php endif; ?>
+
                                     <?php
                                     $btn_text = 'Edit';
                                     $btn_class = 'btn-secondary';
@@ -618,23 +635,6 @@ if ($view == 'list') {
                                     ?>
                                     <a href="<?php echo $edit_link; ?>" class="btn btn-sm <?php echo $btn_class; ?>"
                                         style="<?php echo $status == 'Past' ? 'background:#555; color:#aaa;' : ''; ?>"><?php echo $btn_text; ?></a>
-
-                                    <?php if ($status == 'Live'): ?>
-                                        <form method="POST" style="display:inline;" onsubmit="return confirm('End this event now?');">
-                                            <input type="hidden" name="action" value="end_now">
-                                            <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
-                                            <button type="submit"
-                                                style="background:none; border:none; color:var(--error-color); cursor:pointer; padding:0; margin-right:5px;">End
-                                                Now</button>
-                                        </form>
-                                        <form method="POST" style="display:inline;">
-                                            <input type="hidden" name="action" value="extend_event">
-                                            <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
-                                            <button type="submit" class="btn btn-sm"
-                                                style="background-color: #17a2b8; color: #fff; border: none; padding: 2px 6px; font-size: 0.8em;">+15
-                                                Min</button>
-                                        </form>
-                                    <?php endif; ?>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -903,7 +903,7 @@ if ($view == 'list') {
                 container.innerHTML = '<video src="' + url + '" controls autoplay class="preview-media"></video>';
             }
             document.getElementById('previewModal').style.display = 'block';
-    }
+        }
     </script>
 </body>
 
