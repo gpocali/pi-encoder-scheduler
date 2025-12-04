@@ -600,7 +600,7 @@ if ($view == 'list') {
                                     $add_url = "create_event.php?start_date=" . $start_local->format('Y-m-d') . "&start_time=" . $start_local->format('H:i');
                                     ?>
                                     <a href="<?php echo $add_url; ?>" class="btn btn-sm"
-                                        style="background:var(--success-color); color:#fff;">Add Event</a>
+                                        style="background-color: #28a745; color: #fff; border: none;">Add Event</a>
                                 <?php else: ?>
                                     <a href="<?php echo $edit_link; ?>" class="btn btn-sm btn-secondary">Edit</a>
 
@@ -779,8 +779,7 @@ if ($view == 'list') {
                                 <?php
                                 $add_url = "create_event.php?start_date=" . date('Y-m-d', strtotime($filter_date)) . "&start_time=" . (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
                                 ?>
-                                <a href="<?php echo $add_url; ?>" class="btn btn-sm"
-                                    style="background:var(--success-color); color:#fff;">Add Event</a>
+                                <a href="<?php echo $add_url; ?>" class="btn btn-sm" style="background-color: #28a745; color: #fff; border: none;">Add Event</a>
                             <?php else: ?>
                                 <a href="edit_event.php?id=<?php echo $ev['id']; ?>" class="btn btn-sm btn-secondary">Edit</a>
                             <?php endif; ?>

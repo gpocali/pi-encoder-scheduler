@@ -23,6 +23,9 @@ if (is_admin() || has_role('user')) {
 
 // Default values
 $event_name = '';
+$start_date = '';
+$start_time_val = '';
+$end_time_val = '';
 $selected_tag_ids = [];
 $priority = 0;
 $asset_id = 0;
@@ -37,6 +40,18 @@ $recur_until = '';
 $event_id = 0;
 if (isset($_GET['duplicate_id'])) {
     $event_id = (int) $_GET['duplicate_id'];
+}
+
+// Handle Pre-fill from URL (e.g. from Gap Filling)
+if (isset($_GET['start_date'])) {
+    $start_date = $_GET['start_date'];
+}
+if (isset($_GET['start_time'])) {
+    $start_time_val = $_GET['start_time'];
+    // Default end time to +1 hour
+    $dt = new DateTime($start_time_val);
+    $dt->modify('+1 hour');
+    $end_time_val = $dt->format('H:i');
 }
 
 // Capture Dashboard State
