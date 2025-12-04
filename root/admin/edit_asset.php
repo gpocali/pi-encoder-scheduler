@@ -102,7 +102,12 @@ $all_tags = $stmt_all_tags->fetchAll(PDO::FETCH_ASSOC);
 <body>
     <?php include 'navbar.php'; ?>
     <div class="container">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+        <div style="margin-bottom: 20px;">
+            <a href="manage_assets.php" style="color:var(--accent-color); text-decoration:none;">
+                <i class="fas fa-arrow-left"></i> Back to Assets
+            </a>
+        </div>
+        <div style="display:flex; align-items:center; gap:15px; margin-bottom: 20px;">
             <h1 style="margin:0;">Edit Asset</h1>
             <?php if ($has_permission && empty($asset['default_for_tags'])): ?>
                 <form action="manage_assets.php" method="POST"
@@ -154,7 +159,7 @@ $all_tags = $stmt_all_tags->fetchAll(PDO::FETCH_ASSOC);
 
                 <div style="display:flex; gap:10px;">
                     <button type="submit" class="btn">Save Changes</button>
-                    <a href="manage_assets.php" class="btn btn-secondary">Back to Assets</a>
+
                 </div>
             </form>
         </div>
