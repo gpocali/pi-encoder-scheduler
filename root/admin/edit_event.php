@@ -72,6 +72,32 @@ if (!$event) {
     die("Event not found.");
 }
 
+// Initialize Recurrence Variables
+$recurrence = 'none';
+$recur_days = [];
+$recur_until = '';
+$recur_forever = false;
+
+if (!empty($event['recurring_event_id'])) {
+    // Fetch Series Data
+    $stmt_ser = $pdo->prepare("SELECT * FROM recurring_events WHERE id = ?");
+    $stmt_ser->execute([$event['recurring_event_id']]);
+    $series_row = $stmt_ser->fetch(PDO::FETCH_ASSOC);
+
+    if ($series_row) {
+        $recurrence = $series_row['recurrence_type'];
+        $recur_days = $series_row['recurrence_days'] ? explode(',', $series_row['recurrence_days']) : [];
+        $recur_until = $series_row['end_date'];
+        $recur_forever = is_null($series_row['end_date']);
+    }
+} elseif ($is_generated && isset($recur_row)) {
+    // Already fetched in $recur_row at top
+    $recurrence = $recur_row['recurrence_type'];
+    $recur_days = $recur_row['recurrence_days'] ? explode(',', $recur_row['recurrence_days']) : [];
+    $recur_until = $recur_row['end_date'];
+    $recur_forever = is_null($recur_row['end_date']);
+}
+
 // Check Permission
 $has_permission = false;
 $user_id = $_SESSION['user_id'];
@@ -139,6 +165,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
     $update_scope = $_POST['update_scope'] ?? 'only_this';
     $selected_tag_ids = $_POST['tag_ids'] ?? [];
 
+    // Recurrence Params
+    $recurrence = $_POST['recurrence'] ?? 'none';
+    $recur_until = $_POST['recur_until'] ?? '';
+    $recur_forever = isset($_POST['recur_forever']);
+    $recur_days = $_POST['recur_days'] ?? [];
+    $recur_days_str = implode(',', $recur_days);
+
+    if ($recur_forever || empty($recur_until)) {
+        $recur_until = null;
+    }
+
     if (empty($event_name))
         $errors[] = "Event name is required.";
     if (empty($selected_tag_ids))
@@ -204,11 +241,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                     $stmt_upd->execute([$new_end_date, $recur_id]);
 
                     // 2. Create NEW recurring series starting today
-                    // Fetch original series to copy recurrence rules
-                    $stmt_orig = $pdo->prepare("SELECT * FROM recurring_events WHERE id = ?");
-                    $stmt_orig->execute([$recur_id]);
-                    $orig = $stmt_orig->fetch(PDO::FETCH_ASSOC);
-
                     $duration = $end_dt->getTimestamp() - $start_dt->getTimestamp();
 
                     $sql_new = "INSERT INTO recurring_events (event_name, start_time, duration, start_date, end_date, recurrence_type, recurrence_days, asset_id, priority, parent_event_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
@@ -218,9 +250,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                         $start_time_val,
                         $duration,
                         $start_date, // Starts today
-                        null, // Forever (or copy original end date if it had one? Assume forever for new leg)
-                        $orig['recurrence_type'],
-                        $orig['recurrence_days'],
+                        $recur_until, // New end date
+                        $recurrence, // New type
+                        $recur_days_str, // New days
                         $asset_id,
                         $priority,
                         $recur_id // Link to old series
@@ -231,6 +263,39 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                     $stmt_ret = $pdo->prepare("INSERT INTO recurring_event_tags (recurring_event_id, tag_id) VALUES (?, ?)");
                     foreach ($selected_tag_ids as $tid) {
                         $stmt_ret->execute([$new_recur_id, $tid]);
+                    }
+                } elseif ($update_scope == 'all') {
+                    // Update Entire Series
+                    $duration = $end_dt->getTimestamp() - $start_dt->getTimestamp();
+
+                    $sql_upd = "UPDATE recurring_events SET 
+                                event_name = ?, 
+                                start_time = ?, 
+                                duration = ?, 
+                                end_date = ?, 
+                                recurrence_type = ?, 
+                                recurrence_days = ?, 
+                                asset_id = ?, 
+                                priority = ? 
+                                WHERE id = ?";
+                    $stmt_upd = $pdo->prepare($sql_upd);
+                    $stmt_upd->execute([
+                        $event_name,
+                        $start_time_val,
+                        $duration,
+                        $recur_until,
+                        $recurrence,
+                        $recur_days_str,
+                        $asset_id,
+                        $priority,
+                        $recur_id
+                    ]);
+
+                    // Update Tags
+                    $pdo->prepare("DELETE FROM recurring_event_tags WHERE recurring_event_id = ?")->execute([$recur_id]);
+                    $stmt_ret = $pdo->prepare("INSERT INTO recurring_event_tags (recurring_event_id, tag_id) VALUES (?, ?)");
+                    foreach ($selected_tag_ids as $tid) {
+                        $stmt_ret->execute([$recur_id, $tid]);
                     }
                 }
 
@@ -348,6 +413,24 @@ if ($event['asset_id'] > 0) {
     <title>Edit Event - WRHU Encoder Scheduler</title>
     <link rel="stylesheet" href="style.css">
     <script>
+        function toggleRecurrence() {
+            const val = document.getElementById('recurrence').value;
+            const options = document.getElementById('recur-options');
+            if (options) {
+                options.style.display = val === 'none' ? 'none' : 'block';
+                document.getElementById('recur-days-group').style.display = val === 'weekly' ? 'block' : 'none';
+            }
+        }
+
+        function toggleRecurForever() {
+            const forever = document.getElementById('recur_forever').checked;
+            const until = document.getElementById('recur_until');
+            if (until) {
+                until.disabled = forever;
+                if (forever) until.value = '';
+            }
+        }
+
         // Asset Modal Logic
         let assets = <?php echo json_encode($all_assets); ?>;
 
@@ -560,24 +643,57 @@ if ($event['asset_id'] > 0) {
             <div class="message success"><?php echo $success_message; ?></div>
         <?php endif; ?>
         <?php if ($is_series): ?>
-            <div class="form-group" style="background:#2a2a2a; padding:10px; border:1px solid #444; border-radius:4px;">
-                <label style="font-weight:bold;">Series Management</label>
-                <div style="margin-top:5px; display:flex; align-items:center; gap:10px;">
-                    <label>End Series:</label>
-                    <input type="date" name="end_series_date" id="end_series_date">
-                    <label><input type="checkbox" id="series_forever" onchange="toggleSeriesForever()"> Forever</label>
+            <div style="background:#2a2a2a; padding:15px; border:1px solid #444; border-radius:4px; margin-bottom:20px;">
+                <h3 style="margin-top:0;">Recurrence Settings</h3>
+                <div class="form-group">
+                    <label>Recurrence Type</label>
+                    <select name="recurrence" id="recurrence" onchange="toggleRecurrence()">
+                        <option value="none" <?php if ($recurrence == 'none')
+                            echo 'selected'; ?>>None (One-time)</option>
+                        <option value="daily" <?php if ($recurrence == 'daily')
+                            echo 'selected'; ?>>Daily</option>
+                        <option value="weekly" <?php if ($recurrence == 'weekly')
+                            echo 'selected'; ?>>Weekly</option>
+                    </select>
+                </div>
+
+                <div id="recur-options" style="display:none;">
+                    <div class="form-group">
+                        <label>Repeat Until</label>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <input type="date" name="recur_until" id="recur_until" value="<?php echo $recur_until; ?>">
+                            <label><input type="checkbox" name="recur_forever" id="recur_forever"
+                                    onchange="toggleRecurForever()" <?php if ($recur_forever)
+                                        echo 'checked'; ?>>
+                                Forever</label>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="recur-days-group" style="display:none;">
+                        <label>Repeat On (Weekly)</label>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <label><input type="checkbox" name="recur_days[]" value="0" <?php if (in_array(0, $recur_days))
+                                echo 'checked'; ?>> Sun</label>
+                            <label><input type="checkbox" name="recur_days[]" value="1" <?php if (in_array(1, $recur_days))
+                                echo 'checked'; ?>> Mon</label>
+                            <label><input type="checkbox" name="recur_days[]" value="2" <?php if (in_array(2, $recur_days))
+                                echo 'checked'; ?>> Tue</label>
+                            <label><input type="checkbox" name="recur_days[]" value="3" <?php if (in_array(3, $recur_days))
+                                echo 'checked'; ?>> Wed</label>
+                            <label><input type="checkbox" name="recur_days[]" value="4" <?php if (in_array(4, $recur_days))
+                                echo 'checked'; ?>> Thu</label>
+                            <label><input type="checkbox" name="recur_days[]" value="5" <?php if (in_array(5, $recur_days))
+                                echo 'checked'; ?>> Fri</label>
+                            <label><input type="checkbox" name="recur_days[]" value="6" <?php if (in_array(6, $recur_days))
+                                echo 'checked'; ?>> Sat</label>
+                        </div>
+                    </div>
                 </div>
                 <script>
-                    function toggleSeriesForever() {
-                        const chk = document.getElementById('series_forever');
-                        const date = document.getElementById('end_series_date');
-                        if (chk.checked) {
-                            date.value = '';
-                            date.disabled = true;
-                        } else {
-                            date.disabled = false;
-                        }
-                    }
+                    document.addEventListener('DOMContentLoaded', function () {
+                        toggleRecurrence();
+                        toggleRecurForever();
+                    });
                 </script>
             </div>
         <?php endif; ?>
