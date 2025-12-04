@@ -448,6 +448,16 @@ if ($event['asset_id'] > 0) {
         }
     }
 }
+// Check if event is in the past
+// $end_time_val comes from $event['end_time'] which is UTC in DB.
+// But wait, in edit_event.php, $end_time_val is initialized from $event['end_time'] (UTC) but then converted to local for display?
+// Let's check where $end_time_val is defined.
+// It is defined around line 250 (not shown in previous view, need to check).
+// Assuming $event['end_time'] is UTC.
+$end_check = new DateTime($event['end_time'], new DateTimeZone('UTC'));
+$now_check = new DateTime('now', new DateTimeZone('UTC'));
+$is_read_only = ($end_check < $now_check);
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -455,9 +465,9 @@ if ($event['asset_id'] > 0) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edit Event - WRHU Encoder Scheduler</title>
+    <title><?php echo $is_edit ? 'Edit Event' : 'Create Event'; ?> - WRHU Encoder Scheduler</title>
     <link rel="stylesheet" href="style.css">
-    <?php include 'includes/event_form_scripts.php'; ?>
+    <script src="includes/event_form_scripts.php"></script>
 </head>
 
 <body>

@@ -552,7 +552,8 @@ if ($view == 'list') {
                                 <?php if (!empty($live_tags)): ?>
                                     <?php foreach ($live_tags as $ltag): ?>
                                         <div class="badge badge-live" style="margin-bottom:2px;">Live:
-                                            <?php echo htmlspecialchars($ltag); ?></div>
+                                            <?php echo htmlspecialchars($ltag); ?>
+                                        </div>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
                                 <span
@@ -607,7 +608,16 @@ if ($view == 'list') {
                                     <a href="<?php echo $add_url; ?>" class="btn btn-sm"
                                         style="background-color: #28a745; color: #fff; border: none;">Add Event</a>
                                 <?php else: ?>
-                                    <a href="<?php echo $edit_link; ?>" class="btn btn-sm btn-secondary">Edit</a>
+                                    <?php
+                                    $btn_text = 'Edit';
+                                    $btn_class = 'btn-secondary';
+                                    if ($status == 'Past') {
+                                        $btn_text = 'View';
+                                        $btn_class = ''; // Default style
+                                    }
+                                    ?>
+                                    <a href="<?php echo $edit_link; ?>" class="btn btn-sm <?php echo $btn_class; ?>"
+                                        style="<?php echo $status == 'Past' ? 'background:#555; color:#aaa;' : ''; ?>"><?php echo $btn_text; ?></a>
 
                                     <?php if ($status == 'Live'): ?>
                                         <form method="POST" style="display:inline;" onsubmit="return confirm('End this event now?');">
@@ -824,7 +834,15 @@ if ($view == 'list') {
                                 <a href="<?php echo $add_url; ?>" class="btn btn-sm"
                                     style="background-color: #28a745; color: #fff; border: none;">Add Event</a>
                             <?php else: ?>
-                                <a href="edit_event.php?id=<?php echo $ev['id']; ?>" class="btn btn-sm btn-secondary">Edit</a>
+                                                <?php
+                                                $btn_text = 'Edit';
+                                                $btn_class = 'btn-secondary';
+                                                if ($status_class == 'status-past') {
+                                                    $btn_text = 'View';
+                                                    $btn_class = '';
+                                                }
+                                                ?>
+                                <a href="edit_event.php?id=<?php echo $ev['id']; ?>" class="btn btn-sm <?php echo $btn_class; ?>" style="<?php echo $status_class == 'status-past' ? 'background:#555; color:#aaa;' : ''; ?>"><?php echo $btn_text; ?></a>
                             <?php endif; ?>
                         </div>
                     <?php endforeach; ?>
