@@ -21,8 +21,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $asset = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($asset) {
+            // Check if default asset
+            if (!empty($asset['default_for_tags'])) {
+                $errors[] = "Cannot delete asset: It is set as a default asset for tags: " . htmlspecialchars($asset['default_for_tags']);
+            }
             // Check permissions
-            if ($is_admin || $asset['uploaded_by'] == $user_id) {
+            elseif ($is_admin || $asset['uploaded_by'] == $user_id) {
                 // Delete file
                 $file_path = '/uploads/' . $asset['filename_disk'];
                 if (file_exists($file_path)) {
@@ -272,10 +276,17 @@ if (!function_exists('formatBytes')) {
 
 
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
-            <?php foreach ($assets as $asset):
+            <?php foreach ($assets as $asset): 
                 $my_events = $asset_events[$asset['id']] ?? [];
                 $has_future_events = !empty($my_events);
+                $is_default = !empty($asset['default_for_tags']);
                 $events_list_str = implode(', ', $my_events);
+                
+                $is_protected = $has_future_events || $is_default;
+                $protection_reasons = [];
+                if ($is_default) $protection_reasons[] = "Default Asset (" . $asset['default_for_tags'] . ")";
+                if ($has_future_events) $protection_reasons[] = "Assigned to " . $events_list_str;
+                $protection_tooltip = "Cannot delete: " . implode('; ', $protection_reasons);
 
                 // Fetch tags for this asset (moved up for data attribute)
                 $stmt_at = $pdo->prepare("SELECT t.tag_name FROM asset_tags at JOIN tags t ON at.asset_id = ? AND at.tag_id = t.id");
@@ -323,6 +334,11 @@ if (!function_exists('formatBytes')) {
                                 <strong>In Use:</strong> <?php echo htmlspecialchars($events_list_str); ?>
                             </div>
                         <?php endif; ?>
+                        <?php if ($is_default): ?>
+                            <div style="color: var(--secondary-color); font-size: 0.9em; margin-top: 4px; line-height: 1.2;">
+                                <strong>Default Asset</strong>
+                            </div>
+                        <?php endif; ?>
                         By: <?php echo htmlspecialchars($asset['username'] ?? 'System'); ?><br>
                         Date: <?php echo date('M j, Y', strtotime($asset['created_at'])); ?>
                     </div>
@@ -331,9 +347,9 @@ if (!function_exists('formatBytes')) {
                         <a href="edit_asset.php?id=<?php echo $asset['id']; ?>" class="btn btn-sm btn-secondary"
                             style="flex:1; text-align:center;">Edit</a>
 
-                        <?php if ($has_future_events): ?>
+                        <?php if ($is_protected): ?>
                             <button class="btn btn-sm btn-danger" disabled
-                                title="Cannot delete: Assigned to <?php echo htmlspecialchars($events_list_str); ?>"
+                                title="<?php echo htmlspecialchars($protection_tooltip); ?>"
                                 style="flex:1; opacity: 0.5; cursor: not-allowed;">Delete</button>
                         <?php else: ?>
                             <form method="POST" style="flex:1;"
