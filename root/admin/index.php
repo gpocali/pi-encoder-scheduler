@@ -604,14 +604,7 @@ if ($view == 'list') {
                                 <?php else: ?>
                                     <a href="<?php echo $edit_link; ?>" class="btn btn-sm btn-secondary">Edit</a>
 
-                                    <?php if (!$is_series && $status != 'Live'): ?>
-                                        <form method="POST" style="display:inline;" onsubmit="return confirm('Delete?');">
-                                            <input type="hidden" name="action" value="delete_event">
-                                            <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
-                                            <button type="submit"
-                                                style="background:none; border:none; color:var(--error-color); cursor:pointer; padding:0;">Delete</button>
-                                        </form>
-                                    <?php elseif ($status == 'Live'): ?>
+                                    <?php if ($status == 'Live'): ?>
                                         <form method="POST" style="display:inline;" onsubmit="return confirm('End this event now?');">
                                             <input type="hidden" name="action" value="end_now">
                                             <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
@@ -779,7 +772,8 @@ if ($view == 'list') {
                                 <?php
                                 $add_url = "create_event.php?start_date=" . date('Y-m-d', strtotime($filter_date)) . "&start_time=" . (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
                                 ?>
-                                <a href="<?php echo $add_url; ?>" class="btn btn-sm" style="background-color: #28a745; color: #fff; border: none;">Add Event</a>
+                                <a href="<?php echo $add_url; ?>" class="btn btn-sm"
+                                    style="background-color: #28a745; color: #fff; border: none;">Add Event</a>
                             <?php else: ?>
                                 <a href="edit_event.php?id=<?php echo $ev['id']; ?>" class="btn btn-sm btn-secondary">Edit</a>
                             <?php endif; ?>

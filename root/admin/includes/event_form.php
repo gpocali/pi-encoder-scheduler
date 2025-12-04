@@ -29,33 +29,33 @@
 
         <div class="form-group">
             <label>Event Name</label>
-            <input type="text" name="event_name" value="<?php echo htmlspecialchars($event_name); ?>" required>
+            <input type="text" name="event_name" value="<?php echo htmlspecialchars($event_name); ?>" required <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
         </div>
 
         <div class="form-group">
             <label>Start Date</label>
             <input type="date" name="start_date" value="<?php echo $start_date; ?>" min="<?php echo date('Y-m-d'); ?>"
-                required>
+                required <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
         </div>
 
         <div class="row">
             <div class="col">
                 <div class="form-group">
                     <label>Start Time</label>
-                    <input type="time" name="start_time" value="<?php echo $start_time_val; ?>" required>
+                    <input type="time" name="start_time" value="<?php echo $start_time_val; ?>" required <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
                 </div>
             </div>
             <div class="col">
                 <div class="form-group">
                     <label>End Time</label>
-                    <input type="time" name="end_time" value="<?php echo $end_time_val; ?>" required>
+                    <input type="time" name="end_time" value="<?php echo $end_time_val; ?>" required <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
                 </div>
             </div>
         </div>
 
         <div class="form-group">
             <label>Recurrence</label>
-            <select name="recurrence" id="recurrence" onchange="toggleRecurrence()">
+            <select name="recurrence" id="recurrence" onchange="toggleRecurrence()" <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
                 <option value="none" <?php if ($recurrence == 'none')
                     echo 'selected'; ?>>None (One-time)</option>
                 <option value="daily" <?php if ($recurrence == 'daily')
@@ -70,10 +70,10 @@
             <div class="form-group">
                 <label>Repeat Until</label>
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <input type="date" name="recur_until" id="recur_until" value="<?php echo $recur_until; ?>">
+                    <input type="date" name="recur_until" id="recur_until" value="<?php echo $recur_until; ?>" <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
                     <label><input type="checkbox" name="recur_forever" id="recur_forever"
                             onchange="toggleRecurForever()" <?php if ($recur_forever)
-                                echo 'checked'; ?>>
+                                echo 'checked'; ?> <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
                         Forever</label>
                 </div>
             </div>
@@ -82,19 +82,26 @@
                 <label>Repeat On (Weekly)</label>
                 <div style="display:flex; gap:10px; flex-wrap:wrap;">
                     <label><input type="checkbox" name="recur_days[]" value="0" <?php if (in_array(0, $recur_days))
-                        echo 'checked'; ?>> Sun</label>
+                        echo 'checked'; ?> <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
+                        Sun</label>
                     <label><input type="checkbox" name="recur_days[]" value="1" <?php if (in_array(1, $recur_days))
-                        echo 'checked'; ?>> Mon</label>
+                        echo 'checked'; ?> <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
+                        Mon</label>
                     <label><input type="checkbox" name="recur_days[]" value="2" <?php if (in_array(2, $recur_days))
-                        echo 'checked'; ?>> Tue</label>
+                        echo 'checked'; ?> <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
+                        Tue</label>
                     <label><input type="checkbox" name="recur_days[]" value="3" <?php if (in_array(3, $recur_days))
-                        echo 'checked'; ?>> Wed</label>
+                        echo 'checked'; ?> <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
+                        Wed</label>
                     <label><input type="checkbox" name="recur_days[]" value="4" <?php if (in_array(4, $recur_days))
-                        echo 'checked'; ?>> Thu</label>
+                        echo 'checked'; ?> <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
+                        Thu</label>
                     <label><input type="checkbox" name="recur_days[]" value="5" <?php if (in_array(5, $recur_days))
-                        echo 'checked'; ?>> Fri</label>
+                        echo 'checked'; ?> <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
+                        Fri</label>
                     <label><input type="checkbox" name="recur_days[]" value="6" <?php if (in_array(6, $recur_days))
-                        echo 'checked'; ?>> Sat</label>
+                        echo 'checked'; ?> <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
+                        Sat</label>
                 </div>
             </div>
         </div>
@@ -115,8 +122,9 @@
                         <?php foreach ($tags as $tag): ?>
                             <button type="button"
                                 class="tag-btn <?php echo in_array($tag['id'], $selected_tag_ids) ? 'active' : ''; ?>"
-                                data-id="<?php echo $tag['id']; ?>" onclick="toggleEventTag(this)"
-                                style="padding:6px 12px; background:<?php echo in_array($tag['id'], $selected_tag_ids) ? 'var(--accent-color)' : '#333'; ?>; border:1px solid <?php echo in_array($tag['id'], $selected_tag_ids) ? 'var(--accent-color)' : '#555'; ?>; color:<?php echo in_array($tag['id'], $selected_tag_ids) ? '#000' : '#ccc'; ?>; border-radius:20px; cursor:pointer; font-size:0.9em; font-weight:<?php echo in_array($tag['id'], $selected_tag_ids) ? 'bold' : 'normal'; ?>;">
+                                data-id="<?php echo $tag['id']; ?>"
+                                onclick="<?php echo (isset($is_read_only) && $is_read_only) ? '' : 'toggleEventTag(this)'; ?>"
+                                style="padding:6px 12px; background:<?php echo in_array($tag['id'], $selected_tag_ids) ? 'var(--accent-color)' : '#333'; ?>; border:1px solid <?php echo in_array($tag['id'], $selected_tag_ids) ? 'var(--accent-color)' : '#555'; ?>; color:<?php echo in_array($tag['id'], $selected_tag_ids) ? '#000' : '#ccc'; ?>; border-radius:20px; cursor:<?php echo (isset($is_read_only) && $is_read_only) ? 'default' : 'pointer'; ?>; font-size:0.9em; font-weight:<?php echo in_array($tag['id'], $selected_tag_ids) ? 'bold' : 'normal'; ?>;">
                                 <?php echo htmlspecialchars($tag['tag_name']); ?>
                             </button>
                         <?php endforeach; ?>
@@ -131,7 +139,7 @@
             <div class="col">
                 <div class="form-group">
                     <label>Priority</label>
-                    <select name="priority">
+                    <select name="priority" <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>
                         <option value="0" <?php if ($priority == 0)
                             echo 'selected'; ?>>Normal (Default)</option>
                         <option value="1" <?php if ($priority == 1)
@@ -152,7 +160,7 @@
                 <input type="text" id="selected_asset_name" readonly
                     value="<?php echo htmlspecialchars($selected_asset_name); ?>"
                     style="flex:1; background:#333; border:1px solid #444; color:#fff; padding:8px;">
-                <button type="button" class="btn btn-secondary" onclick="openAssetModal()">Select Asset</button>
+                <button type="button" class="btn btn-secondary" onclick="openAssetModal()" <?php echo (isset($is_read_only) && $is_read_only) ? 'disabled' : ''; ?>>Select Asset</button>
             </div>
             <div id="asset-warning" style="color:orange; display:none; margin-top:5px;"></div>
         </div>
@@ -174,8 +182,10 @@
                     </select>
                 </div>
             <?php endif; ?>
-            <button type="submit" class="btn"
-                style="flex:1; white-space:nowrap;"><?php echo $is_edit ? 'Update Event' : 'Create Event'; ?></button>
+            <?php if (!isset($is_read_only) || !$is_read_only): ?>
+                <button type="submit" class="btn"
+                    style="flex:1; white-space:nowrap;"><?php echo $is_edit ? 'Update Event' : 'Create Event'; ?></button>
+            <?php endif; ?>
         </div>
     </form>
 </div>

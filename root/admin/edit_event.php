@@ -476,26 +476,6 @@ if ($event['asset_id'] > 0) {
                 <i class="fas fa-arrow-left"></i> Back to Dashboard
             </a>
         </div>
-        <div style="display:flex; align-items:center; gap:15px; margin-bottom:20px;">
-            <h1 style="margin:0;">Edit Event</h1>
-            <form action="edit_event.php?<?php echo $_SERVER['QUERY_STRING']; ?>" method="POST"
-                onsubmit="return confirm('Delete this event?');" style="margin:0;">
-                <input type="hidden" name="action" value="delete_event">
-                <button type="submit" class="btn-delete" style="padding: 5px 10px; font-size: 0.8em; width:auto;">Delete
-                    Event</button>
-            </form>
-        </div>
-
-        <?php if (!empty($errors)): ?>
-            <div class="message error">
-                <ul><?php foreach ($errors as $e)
-                    echo "<li>$e</li>"; ?></ul>
-            </div>
-        <?php endif; ?>
-        <?php if ($success_message): ?>
-            <div class="message success"><?php echo $success_message; ?></div>
-        <?php endif; ?>
-
         <?php
         // Prepare variables for the shared form
         $is_edit = true;
@@ -511,7 +491,31 @@ if ($event['asset_id'] > 0) {
         // $recurrence, $recur_until, $recur_forever, $recur_days are already set
         // $is_series is already set
         // $event_id is already set
+        
+        // Determine Read-Only Status
+        $is_read_only = false;
+        if (!$is_series) {
+            $end_utc = new DateTime($event['end_time'], new DateTimeZone('UTC'));
+            $now_utc = new DateTime('now', new DateTimeZone('UTC'));
+            if ($end_utc < $now_utc) {
+                $is_read_only = true;
+            }
+        }
         ?>
+
+        <div style="display:flex; align-items:center; gap:15px; margin-bottom:20px;">
+            <h1 style="margin:0;">Edit Event</h1>
+            <?php if (!$is_read_only): ?>
+                <form action="edit_event.php?<?php echo $_SERVER['QUERY_STRING']; ?>" method="POST"
+                    onsubmit="return confirm('Delete this event?');" style="margin:0;">
+                    <input type="hidden" name="action" value="delete_event">
+                    <button type="submit" class="btn-delete" style="padding: 5px 10px; font-size: 0.8em; width:auto;">Delete
+                        Event</button>
+                </form>
+            <?php else: ?>
+                <span class="badge" style="background:#555; color:#ccc;">Read Only (Past Event)</span>
+            <?php endif; ?>
+        </div>
 
         <?php include 'includes/event_form.php'; ?>
     </div>
