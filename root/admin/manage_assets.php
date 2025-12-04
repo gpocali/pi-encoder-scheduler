@@ -287,7 +287,7 @@ if (!function_exists('formatBytes')) {
                     data-name="<?php echo htmlspecialchars(strtolower($asset['display_name'] ?? $asset['filename_original'])); ?>"
                     data-tags="<?php echo htmlspecialchars(strtolower($tag_display)); ?>"
                     data-events="<?php echo htmlspecialchars(strtolower($events_list_str)); ?>"
-                    style="padding: 1em; margin-bottom: 0;">
+                    style="padding: 1em; margin-bottom: 0; display: flex; flex-direction: column; height: 100%;">
                     <?php
                     $file_url = 'serve_asset.php?id=' . $asset['id'];
                     $is_image = strpos($asset['mime_type'], 'image') !== false;
@@ -327,7 +327,7 @@ if (!function_exists('formatBytes')) {
                         Date: <?php echo date('M j, Y', strtotime($asset['created_at'])); ?>
                     </div>
 
-                    <div style="display:flex; gap:10px;">
+                    <div style="display:flex; gap:10px; margin-top: auto;">
                         <a href="edit_asset.php?id=<?php echo $asset['id']; ?>" class="btn btn-sm btn-secondary"
                             style="flex:1; text-align:center;">Edit</a>
 
