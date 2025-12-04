@@ -158,7 +158,7 @@ $all_tags = $stmt_all_tags->fetchAll(PDO::FETCH_ASSOC);
                 </div>
 
                 <div style="display:flex; gap:10px;">
-                    <button type="submit" class="btn">Save Changes</button>
+                    <button type="submit" class="btn" style="width:100%;">Save Changes</button>
 
                 </div>
             </form>

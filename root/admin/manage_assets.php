@@ -434,7 +434,7 @@ if (!function_exists('formatBytes')) {
                 const events = card.getAttribute('data-events');
 
                 if (name.includes(query) || tags.includes(query) || events.includes(query)) {
-                    card.style.display = 'block';
+                    card.style.display = 'flex';
                 } else {
                     card.style.display = 'none';
                 }
