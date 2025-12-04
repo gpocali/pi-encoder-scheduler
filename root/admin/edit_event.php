@@ -180,6 +180,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
     $recur_days = $_POST['recur_days'] ?? [];
     $recur_days_str = implode(',', $recur_days);
 
+    error_log("Edit Event POST: " . print_r($_POST, true));
+    error_log("Recurrence: $recurrence, Days: $recur_days_str, Scope: $update_scope");
+
     if ($recur_forever || empty($recur_until)) {
         $recur_until = null;
     }
@@ -641,262 +644,65 @@ if ($event['asset_id'] > 0) {
             updateEventHiddenInputs();
         }
 
-        function updateEventHiddenInputs() {
-            const container = document.getElementById('eventTagInputs');
-            container.innerHTML = '';
-            const activeBtns = document.querySelectorAll('#eventTagButtons .tag-btn.active');
-            activeBtns.forEach(btn => {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'tag_ids[]';
-                input.value = btn.dataset.id;
-                container.appendChild(input);
-            });
-        }
-    </script>
-</head>
+        <?php
+        // ... PHP logic remains above ...
+        
+        // Prepare variables for the shared form
+        $is_edit = true;
+        $event_name = $event['event_name'];
+        $start_date = $current_date;
+        $start_time_val = $current_start_time;
+        $end_time_val = $current_end_time;
+        $selected_tag_ids = $current_tag_ids;
+        $priority = $event['priority'];
+        $asset_id = $event['asset_id'];
+        // $selected_asset_name is already set
+// $recurrence, $recur_until, $recur_forever, $recur_days are already set
+// $is_series is already set
+// $event_id is already set
+        ?>
+            < !DOCTYPE html >
+                <html lang="en">
 
-<body>
+                    <head>
+                        <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                <title>Edit Event - WRHU Encoder Scheduler</title>
+                                <link rel="stylesheet" href="style.css">
+                                    <?php include 'includes/event_form_scripts.php'; ?>
+                                </head>
 
-    <?php include 'navbar.php'; ?>
+                                <body>
 
-    <div class="container">
-        <div style="margin-bottom: 20px;">
-            <?php
-            // Remove 'id' from query params for the back link
-            $back_params = $_GET;
-            unset($back_params['id']);
-            ?>
-            <a href="index.php?<?php echo http_build_query($back_params); ?>"
-                style="color:var(--accent-color); text-decoration:none;">
-                <i class="fas fa-arrow-left"></i> Back to Dashboard
-            </a>
-        </div>
-        <h1>Edit Event</h1>
+                                    <?php include 'navbar.php'; ?>
 
-        <?php if (!empty($errors)): ?>
-            <div class="message error">
-                <ul><?php foreach ($errors as $e)
-                    echo "<li>$e</li>"; ?></ul>
-            </div>
-        <?php endif; ?>
-        <?php if ($success_message): ?>
-            <div class="message success"><?php echo $success_message; ?></div>
-        <?php endif; ?>
-        <?php if ($is_series): ?>
-            <div style="background:#2a2a2a; padding:15px; border:1px solid #444; border-radius:4px; margin-bottom:20px;">
-                <h3 style="margin-top:0;">Recurrence Settings</h3>
-                <div class="form-group">
-                    <label>Recurrence Type</label>
-                    <select name="recurrence" id="recurrence" onchange="toggleRecurrence()">
-                        <option value="none" <?php if ($recurrence == 'none')
-                            echo 'selected'; ?>>None (One-time)</option>
-                        <option value="daily" <?php if ($recurrence == 'daily')
-                            echo 'selected'; ?>>Daily</option>
-                        <option value="weekly" <?php if ($recurrence == 'weekly')
-                            echo 'selected'; ?>>Weekly</option>
-                    </select>
-                </div>
+                                    <div class="container">
+                                        <div style="margin-bottom: 20px;">
+                                            <?php
+                                            // Remove 'id' from query params for the back link
+                                            $back_params = $_GET;
+                                            unset($back_params['id']);
+                                            ?>
+                                            <a href="index.php?<?php echo http_build_query($back_params); ?>"
+                                                style="color:var(--accent-color); text-decoration:none;">
+                                                <i class="fas fa-arrow-left"></i> Back to Dashboard
+                                            </a>
+                                        </div>
+                                        <h1>Edit Event</h1>
 
-                <div id="recur-options" style="display:none;">
-                    <div class="form-group">
-                        <label>Repeat Until</label>
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <input type="date" name="recur_until" id="recur_until" value="<?php echo $recur_until; ?>">
-                            <label><input type="checkbox" name="recur_forever" id="recur_forever"
-                                    onchange="toggleRecurForever()" <?php if ($recur_forever)
-                                        echo 'checked'; ?>>
-                                Forever</label>
-                        </div>
-                    </div>
+                                        <?php if (!empty($errors)): ?>
+                                            <div class="message error">
+                                                <ul><?php foreach ($errors as $e)
+                                                    echo "<li>$e</li>"; ?></ul>
+                                            </div>
+                                        <?php endif; ?>
+                                        <?php if ($success_message): ?>
+                                            <div class="message success"><?php echo $success_message; ?></div>
+                                        <?php endif; ?>
 
-                    <div class="form-group" id="recur-days-group" style="display:none;">
-                        <label>Repeat On (Weekly)</label>
-                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                            <label><input type="checkbox" name="recur_days[]" value="0" <?php if (in_array(0, $recur_days))
-                                echo 'checked'; ?>> Sun</label>
-                            <label><input type="checkbox" name="recur_days[]" value="1" <?php if (in_array(1, $recur_days))
-                                echo 'checked'; ?>> Mon</label>
-                            <label><input type="checkbox" name="recur_days[]" value="2" <?php if (in_array(2, $recur_days))
-                                echo 'checked'; ?>> Tue</label>
-                            <label><input type="checkbox" name="recur_days[]" value="3" <?php if (in_array(3, $recur_days))
-                                echo 'checked'; ?>> Wed</label>
-                            <label><input type="checkbox" name="recur_days[]" value="4" <?php if (in_array(4, $recur_days))
-                                echo 'checked'; ?>> Thu</label>
-                            <label><input type="checkbox" name="recur_days[]" value="5" <?php if (in_array(5, $recur_days))
-                                echo 'checked'; ?>> Fri</label>
-                            <label><input type="checkbox" name="recur_days[]" value="6" <?php if (in_array(6, $recur_days))
-                                echo 'checked'; ?>> Sat</label>
-                        </div>
-                    </div>
-                </div>
-                <script>
-                    document.addEventListener('DOMContentLoaded', function () {
-                        toggleRecurrence();
-                        toggleRecurForever();
-                    });
-                </script>
-            </div>
-        <?php endif; ?>
-        <div class="card">
-            <form action="edit_event.php?<?php echo $_SERVER['QUERY_STRING']; ?>" method="POST">
-                <input type="hidden" name="action" value="update_event">
+                                        <?php include 'includes/event_form.php'; ?>
+                                    </div>
 
-                <div class="form-group">
-                    <label>Event Name</label>
-                    <input type="text" name="event_name" value="<?php echo htmlspecialchars($event['event_name']); ?>"
-                        required>
-                </div>
+                                </body>
 
-
-
-                <div class="form-group">
-                    <label>Start Date</label>
-                    <input type="date" name="start_date" value="<?php echo $current_date; ?>" required>
-                </div>
-
-                <div class="row">
-                    <div class="col">
-                        <div class="form-group">
-                            <label>Start Time</label>
-                            <input type="time" name="start_time" value="<?php echo $current_start_time; ?>" required>
-                        </div>
-                    </div>
-                    <div class="col">
-                        <div class="form-group">
-                            <label>End Time</label>
-                            <input type="time" name="end_time" value="<?php echo $current_end_time; ?>" required>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col">
-                        <div class="form-group">
-                            <label>Output Tags</label>
-                            <div class="tag-button-group" id="eventTagButtons"
-                                style="display:flex; flex-wrap:wrap; gap:8px;">
-                                <?php foreach ($tags as $tag): ?>
-                                    <button type="button"
-                                        class="tag-btn <?php echo in_array($tag['id'], $current_tag_ids) ? 'active' : ''; ?>"
-                                        data-id="<?php echo $tag['id']; ?>" onclick="toggleEventTag(this)"
-                                        style="padding:6px 12px; background:<?php echo in_array($tag['id'], $current_tag_ids) ? 'var(--accent-color)' : '#333'; ?>; border:1px solid <?php echo in_array($tag['id'], $current_tag_ids) ? 'var(--accent-color)' : '#555'; ?>; color:<?php echo in_array($tag['id'], $current_tag_ids) ? '#000' : '#ccc'; ?>; border-radius:20px; cursor:pointer; font-size:0.9em; font-weight:<?php echo in_array($tag['id'], $current_tag_ids) ? 'bold' : 'normal'; ?>;">
-                                        <?php echo htmlspecialchars($tag['tag_name']); ?>
-                                    </button>
-                                <?php endforeach; ?>
-                            </div>
-                            <div id="eventTagInputs">
-                                <?php foreach ($current_tag_ids as $tid): ?>
-                                    <input type="hidden" name="tag_ids[]" value="<?php echo $tid; ?>">
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col">
-                        <div class="form-group">
-                            <label>Priority</label>
-                            <select name="priority">
-                                <option value="0" <?php if ($event['priority'] == 0)
-                                    echo 'selected'; ?>>Normal (Default)
-                                </option>
-                                <option value="1" <?php if ($event['priority'] == 1)
-                                    echo 'selected'; ?>>Medium</option>
-                                <option value="2" <?php if ($event['priority'] == 2)
-                                    echo 'selected'; ?>>High (Preempts
-                                    others)</option>
-                            </select>
-                            <small style="color:#aaa; display:block; margin-top:5px;">High priority events will
-                                interrupt lower priority events playing at the same time.</small>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label>Asset</label>
-                    <div style="display:flex; gap:10px;">
-                        <input type="hidden" name="existing_asset_id" id="selected_asset_id"
-                            value="<?php echo $event['asset_id']; ?>">
-                        <input type="text" id="selected_asset_name" readonly
-                            value="<?php echo htmlspecialchars($selected_asset_name); ?>"
-                            style="flex:1; background:#333; border:1px solid #444; color:#fff; padding:8px;">
-                        <button type="button" class="btn btn-secondary" onclick="openAssetModal()">Select Asset</button>
-                    </div>
-                    <div id="asset-warning" style="color:orange; display:none; margin-top:5px;"></div>
-                </div>
-
-                <div style="display:flex; gap:10px; align-items:center; flex-wrap:nowrap;">
-                    <?php if ($is_series): ?>
-                        <div style="display:flex; align-items:center; gap:5px; white-space:nowrap;">
-                            <label for="update_scope" style="margin:0;">Update Scope:</label>
-                            <select name="update_scope" id="update_scope"
-                                style="padding: 10px; background: #333; color: #fff; border: 1px solid #444; border-radius: 4px;">
-                                <?php $scope = $_POST['update_scope'] ?? 'all'; ?>
-                                <option value="all" <?php if ($scope == 'all')
-                                    echo 'selected'; ?>>Entire Series</option>
-                                <option value="future" <?php if ($scope == 'future')
-                                    echo 'selected'; ?>>This & Future
-                                </option>
-                                <option value="only_this" <?php if ($scope == 'only_this')
-                                    echo 'selected'; ?>>Only This
-                                    Instance</option>
-                            </select>
-                        </div>
-                    <?php endif; ?>
-                    <button type="submit" class="btn" style="flex:1; white-space:nowrap;">Update Event</button>
-                </div>
-            </form>
-
-            <div style="display:flex; gap:10px; margin-top:1em;">
-                <a href="create_event.php?duplicate_id=<?php echo $event_id; ?>" class="btn btn-secondary"
-                    style="text-align:center; flex:1;">Duplicate Event</a>
-
-                <form action="edit_event.php?<?php echo $_SERVER['QUERY_STRING']; ?>" method="POST"
-                    onsubmit="return confirm('Delete this event?');" style="flex:1;">
-                    <input type="hidden" name="action" value="delete_event">
-
-                    <button type="submit" class="btn-delete" style="width:100%;">Delete Event</button>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Asset Selection Modal -->
-    <div id="assetSelectionModal" class="modal">
-        <div class="modal-content" style="width: 80%; max-width: 800px;">
-            <span class="close" onclick="closeAssetModal()">&times;</span>
-            <h2>Select Asset</h2>
-            <div style="margin-bottom: 15px; display:flex; justify-content:space-between; gap:10px;">
-                <input type="text" id="assetModalSearch" placeholder="Search assets..." onkeyup="filterAssetModal()"
-                    style="flex:1;">
-                <select id="assetModalTagFilter" onchange="filterAssetModal()"
-                    style="flex:0 0 150px; padding: 5px; background: #333; color: #fff; border: 1px solid #444; border-radius: 4px;">
-                    <option value="">All Tags</option>
-                    <?php foreach ($tags as $tag): ?>
-                        <option value="<?php echo $tag['id']; ?>"><?php echo htmlspecialchars($tag['tag_name']); ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <button type="button" class="btn btn-sm" onclick="toggleAssetModalUpload()">+ Upload New</button>
-            </div>
-
-            <div id="assetModalUpload"
-                style="display:none; margin-bottom:15px; padding:15px; background:#222; border-radius:4px;">
-                <h3>Upload New Asset</h3>
-                <input type="file" id="modalAssetFile" style="margin-bottom:10px;">
-                <button type="button" class="btn btn-sm" onclick="uploadAssetInModal()">Upload & Select</button>
-            </div>
-
-            <div id="assetModalList"
-                style="display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:10px; max-height:400px; overflow-y:auto;">
-                <!-- JS populates this -->
-            </div>
-        </div>
-    </div>
-
-    <footer>
-        &copy;<?php echo date("Y") > 2025 ? "2025-" . date("Y") : "2025"; ?> WRHU Radio Hofstra University. Written by
-        Gregory Pocali for WRHU with assistance from Google Gemini 3.
-    </footer>
-
-</body>
-
-</html>
+                            </html>
