@@ -1,6 +1,7 @@
 <?php
 require_once 'auth.php';
-require_role(['admin', 'user']);
+require_once 'auth.php';
+// require_role(['admin', 'user']); // Allow all authenticated users
 ?>
 <!DOCTYPE html>
 <html lang="en">
