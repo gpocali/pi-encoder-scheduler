@@ -219,9 +219,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $start_utc = $start_dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
                 $end_utc = $end_dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-                $sql_event = "INSERT INTO events (event_name, start_time, end_time, asset_id, priority) VALUES (?, ?, ?, ?, ?)";
+                // Legacy tag_id required
+                $primary_tag = $selected_tag_ids[0];
+                $sql_event = "INSERT INTO events (event_name, start_time, end_time, asset_id, priority, tag_id) VALUES (?, ?, ?, ?, ?, ?)";
                 $stmt_event = $pdo->prepare($sql_event);
-                $stmt_event->execute([$event_name, $start_utc, $end_utc, $asset_id, $priority]);
+                $stmt_event->execute([$event_name, $start_utc, $end_utc, $asset_id, $priority, $primary_tag]);
                 $event_id = $pdo->lastInsertId();
 
                 // Insert Tags
