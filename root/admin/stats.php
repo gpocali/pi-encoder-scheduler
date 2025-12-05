@@ -205,6 +205,7 @@ require_role(['admin', 'user']);
             <!-- Time Selection Controls -->
             <div class="controls-container">
                 <button class="time-btn" onclick="setPeriod('-1h')">1 Hour</button>
+                <button class="time-btn" onclick="setPeriod('-3h')">3 Hours</button>
                 <button class="time-btn active" onclick="setPeriod('-24h')">24 Hours</button>
                 <button class="time-btn" onclick="setPeriod('-1week')">1 Week</button>
                 <button class="time-btn" onclick="setPeriod('-3month')">3 Months</button>
