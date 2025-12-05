@@ -370,14 +370,14 @@ if ($view == 'list') {
                                         <form method="POST" style="margin:0;">
                                             <input type="hidden" name="action" value="extend_event">
                                             <input type="hidden" name="event_id" value="<?php echo $asset['id']; ?>">
-                                            <button type="submit"
+                                            <button type="submit" title="Add 15 Minutes to the end of this event"
                                                 style="background:var(--secondary-color); color:#fff; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:0.8em;">+15m</button>
                                         </form>
                                     <?php endif; ?>
                                     <form method="POST" onsubmit="return confirm('End this event now?');" style="margin:0;">
                                         <input type="hidden" name="action" value="end_now">
                                         <input type="hidden" name="event_id" value="<?php echo $asset['id']; ?>">
-                                        <button type="submit"
+                                        <button type="submit" title="End this event now and return to normal programming"
                                             style="background:var(--error-color); color:#fff; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:0.8em;">End
                                             Now</button>
                                     </form>
