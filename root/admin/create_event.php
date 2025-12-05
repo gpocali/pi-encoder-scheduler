@@ -60,6 +60,7 @@ $dashboard_state = [
     'date' => $_GET['date'] ?? date('Y-m-d'),
     'page' => $_GET['page'] ?? 1,
     'tag_id' => $_GET['tag_id'] ?? '',
+    'type' => $_GET['type'] ?? '',
     'hide_past' => $_GET['hide_past'] ?? ''
 ];
 if (isset($_GET['duplicate_id'])) {
@@ -241,6 +242,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 'date' => $_POST['dashboard_date'] ?? date('Y-m-d'),
                 'page' => $_POST['dashboard_page'] ?? 1,
                 'tag_id' => $_POST['dashboard_tag_id'] ?? '',
+                'type' => $_POST['dashboard_type'] ?? '',
                 'hide_past' => $_POST['dashboard_hide_past'] ?? ''
             ];
             // Filter out empty

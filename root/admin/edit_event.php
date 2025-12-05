@@ -345,15 +345,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
 
             } else {
                 // ONE-OFF EVENT UPDATE (Standard)
+                // Legacy tag_id required
+                $primary_tag = $selected_tag_ids[0];
                 $sql_upd = "UPDATE events SET 
                             event_name = ?, 
                             asset_id = ?, 
                             priority = ?,
                             start_time = ?,
-                            end_time = ?
+                            end_time = ?,
+                            tag_id = ?
                             WHERE id = ?";
                 $stmt_upd = $pdo->prepare($sql_upd);
-                $stmt_upd->execute([$event_name, $asset_id, $priority, $start_utc, $end_utc, $event_id]);
+                $stmt_upd->execute([$event_name, $asset_id, $priority, $start_utc, $end_utc, $primary_tag, $event_id]);
 
                 // Update Tags
                 $pdo->prepare("DELETE FROM event_tags WHERE event_id = ?")->execute([$event_id]);
@@ -505,7 +508,8 @@ $is_read_only = ($end_check < $now_check);
 
         <div style="display:flex; align-items:center; gap:15px; margin-bottom: 20px;">
             <h1 style="margin:0;">
-                <?php echo $is_edit ? ($is_read_only ? 'View Event' : 'Edit Event') : 'Create Event'; ?></h1>
+                <?php echo $is_edit ? ($is_read_only ? 'View Event' : 'Edit Event') : 'Create Event'; ?>
+            </h1>
             <?php if ($is_edit && !$is_read_only): ?>
                 <form action="edit_event.php?<?php echo $_SERVER['QUERY_STRING']; ?>" method="POST"
                     onsubmit="return confirm('Delete this event?');" style="margin:0;">

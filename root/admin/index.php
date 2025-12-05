@@ -32,11 +32,20 @@ if ($is_admin || has_role('user')) {
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (isset($_POST['action']) && $_POST['action'] == 'end_now') {
         $event_id = (int) $_POST['event_id'];
-        // Verify permission
-        $stmt = $pdo->prepare("SELECT tag_id FROM events WHERE id = ?");
+        // Verify permission (Check ALL tags)
+        $stmt = $pdo->prepare("SELECT tag_id FROM event_tags WHERE event_id = ?");
         $stmt->execute([$event_id]);
-        $evt_tag = $stmt->fetchColumn();
-        if (in_array($evt_tag, $allowed_tag_ids)) {
+        $evt_tags = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        $has_perm = false;
+        foreach ($evt_tags as $tid) {
+            if (in_array($tid, $allowed_tag_ids)) {
+                $has_perm = true;
+                break;
+            }
+        }
+
+        if ($has_perm) {
             $now_utc = (new DateTime())->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
             $pdo->prepare("UPDATE events SET end_time = ? WHERE id = ?")->execute([$now_utc, $event_id]);
             header("Location: " . $_SERVER['REQUEST_URI']);
@@ -46,16 +55,31 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     if (isset($_POST['action']) && $_POST['action'] == 'extend_event') {
         $event_id = (int) $_POST['event_id'];
-        // Verify permission
-        $stmt = $pdo->prepare("SELECT tag_id, end_time FROM events WHERE id = ?");
+        // Verify permission (Check ALL tags)
+        $stmt = $pdo->prepare("SELECT tag_id FROM event_tags WHERE event_id = ?");
         $stmt->execute([$event_id]);
-        $evt = $stmt->fetch(PDO::FETCH_ASSOC);
+        $evt_tags = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-        if ($evt && in_array($evt['tag_id'], $allowed_tag_ids)) {
-            $new_end = date('Y-m-d H:i:s', strtotime($evt['end_time'] . ' +15 minutes'));
-            $pdo->prepare("UPDATE events SET end_time = ? WHERE id = ?")->execute([$new_end, $event_id]);
-            header("Location: " . $_SERVER['REQUEST_URI']);
-            exit;
+        $has_perm = false;
+        foreach ($evt_tags as $tid) {
+            if (in_array($tid, $allowed_tag_ids)) {
+                $has_perm = true;
+                break;
+            }
+        }
+
+        if ($has_perm) {
+            // Need current end time
+            $stmt_end = $pdo->prepare("SELECT end_time FROM events WHERE id = ?");
+            $stmt_end->execute([$event_id]);
+            $current_end = $stmt_end->fetchColumn();
+
+            if ($current_end) {
+                $new_end = date('Y-m-d H:i:s', strtotime($current_end . ' +15 minutes'));
+                $pdo->prepare("UPDATE events SET end_time = ? WHERE id = ?")->execute([$new_end, $event_id]);
+                header("Location: " . $_SERVER['REQUEST_URI']);
+                exit;
+            }
         }
     }
     if (isset($_POST['action']) && $_POST['action'] == 'delete_event') {

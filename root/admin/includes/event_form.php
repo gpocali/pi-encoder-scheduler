@@ -25,6 +25,7 @@
                 value="<?php echo htmlspecialchars($dashboard_state['tag_id']); ?>">
             <input type="hidden" name="dashboard_hide_past"
                 value="<?php echo htmlspecialchars($dashboard_state['hide_past']); ?>">
+            <input type="hidden" name="dashboard_type" value="<?php echo htmlspecialchars($dashboard_state['type']); ?>">
         <?php endif; ?>
 
         <div class="form-group">
