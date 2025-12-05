@@ -54,7 +54,11 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
                     <a href="profile.php"><i class="bi bi-gear"></i> Profile Settings</a>
                     <?php if ($user_role === 'admin'): ?>
                         <a href="manage_users.php"><i class="bi bi-people"></i> Manage Users</a>
+                    <?php endif; ?>
+                    <?php if ($user_role === 'admin' || $user_role === 'user'): ?>
                         <a href="default_assets.php"><i class="bi bi-images"></i> Default Assets</a>
+                    <?php endif; ?>
+                    <?php if ($user_role === 'admin'): ?>
                         <a href="manage_tags.php"><i class="bi bi-tags"></i> Manage Tags</a>
                     <?php endif; ?>
                     <div class="dropdown-divider"></div>
