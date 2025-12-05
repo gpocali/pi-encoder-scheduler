@@ -276,11 +276,11 @@ require_role(['admin', 'user']);
                         // Update Text
                         document.getElementById('stat-Network_Total').innerText = data.grand_total.toLocaleString();
 
-                        // Update Peak
-                        if (!sessionPeaks['Network_Total'] || data.grand_total > sessionPeaks['Network_Total']) {
-                            sessionPeaks['Network_Total'] = data.grand_total;
-                        }
-                        document.getElementById('peak-Network_Total').innerText = sessionPeaks['Network_Total'].toLocaleString();
+                        // Update Peak - DEPRECATED (Now calculated from graph)
+                        // if (!sessionPeaks['Network_Total'] || data.grand_total > sessionPeaks['Network_Total']) {
+                        //     sessionPeaks['Network_Total'] = data.grand_total;
+                        // }
+                        // document.getElementById('peak-Network_Total').innerText = sessionPeaks['Network_Total'].toLocaleString();
 
                         // Update Graph
                         updateGraph('Network_Total', currentPeriod, forceGraphRefresh);
@@ -328,11 +328,11 @@ require_role(['admin', 'user']);
                         document.getElementById(`m-${key}`).innerText = stats.med || 0;
                         document.getElementById(`l-${key}`).innerText = stats.low || 0;
 
-                        // 3. Update Session Peak
-                        if (!sessionPeaks[key] || total > sessionPeaks[key]) {
-                            sessionPeaks[key] = total;
-                        }
-                        document.getElementById(`peak-${key}`).innerText = sessionPeaks[key].toLocaleString();
+                        // 3. Update Session Peak - DEPRECATED (Now calculated from graph)
+                        // if (!sessionPeaks[key] || total > sessionPeaks[key]) {
+                        //     sessionPeaks[key] = total;
+                        // }
+                        // document.getElementById(`peak-${key}`).innerText = sessionPeaks[key].toLocaleString();
 
                         // 4. Update Graph
                         updateGraph(key, currentPeriod, forceGraphRefresh);
@@ -378,11 +378,42 @@ require_role(['admin', 'user']);
                     const ctx = document.getElementById(`chart-${key}`);
                     if (!ctx) return;
 
+                    // Calculate Peak from Graph Data
+                    let graphPeak = 0;
+                    const isStacked = (key === 'Network_Total');
+
+                    if (data.datasets && data.datasets.length > 0) {
+                        if (isStacked) {
+                            // For stacked, we need to sum up all datasets at each point
+                            // Assuming all datasets have same length
+                            const length = data.datasets[0].data.length;
+                            for (let i = 0; i < length; i++) {
+                                let sum = 0;
+                                for (const ds of data.datasets) {
+                                    sum += (ds.data[i] || 0);
+                                }
+                                if (sum > graphPeak) graphPeak = sum;
+                            }
+                        } else {
+                            // For individual streams, find max of "Peak" dataset (usually index 1) or "Average" (index 0)
+                            // Or just iterate all data points of all datasets to be safe
+                            for (const ds of data.datasets) {
+                                for (const val of ds.data) {
+                                    if (val > graphPeak) graphPeak = val;
+                                }
+                            }
+                        }
+                    }
+
+                    // Update Peak UI
+                    const peakEl = document.getElementById(`peak-${key}`);
+                    if (peakEl) {
+                        peakEl.innerText = Math.ceil(graphPeak).toLocaleString();
+                    }
+
                     if (charts[key]) {
                         charts[key].destroy();
                     }
-
-                    const isStacked = (key === 'Network_Total');
 
                     const datasets = data.datasets.map((ds, index) => {
                         const colors = ['#4db8ff', '#ff5555', '#4caf50', '#ffeb3b', '#9c27b0'];
