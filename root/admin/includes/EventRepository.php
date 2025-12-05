@@ -111,7 +111,7 @@ class EventRepository
 
         // 1. Get One-Offs active NOW
         $sql = "
-            SELECT e.*, a.filename_disk, a.mime_type, a.md5_hash, a.filename_original
+            SELECT e.*, 'none' as recurrence_type, a.filename_disk, a.mime_type, a.md5_hash, a.filename_original
             FROM events e
             JOIN event_tags et ON e.id = et.event_id
             JOIN tags t ON et.tag_id = t.id

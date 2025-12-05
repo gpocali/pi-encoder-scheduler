@@ -608,23 +608,6 @@ if ($view == 'list') {
                                     <a href="<?php echo $add_url; ?>" class="btn btn-sm"
                                         style="background-color: #28a745; color: #fff; border: none;">Add Event</a>
                                 <?php else: ?>
-                                    <?php if ($status == 'Live'): ?>
-                                        <form method="POST" style="display:inline;" onsubmit="return confirm('End this event now?');">
-                                            <input type="hidden" name="action" value="end_now">
-                                            <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
-                                            <button type="submit" class="btn btn-sm"
-                                                style="background-color:var(--error-color); color:#fff; border:none; margin-right:5px;">End
-                                                Now</button>
-                                        </form>
-                                        <form method="POST" style="display:inline;">
-                                            <input type="hidden" name="action" value="extend_event">
-                                            <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
-                                            <button type="submit" class="btn btn-sm"
-                                                style="background-color: #17a2b8; color: #fff; border: none; margin-right:5px;">+15
-                                                Min</button>
-                                        </form>
-                                    <?php endif; ?>
-
                                     <?php
                                     $btn_text = 'Edit';
                                     $btn_class = 'btn-secondary';
