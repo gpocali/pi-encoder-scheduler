@@ -199,6 +199,32 @@ try {
 
     echo "<h3>Migration (Round 5) completed successfully!</h3>";
 
+    echo "<h2>Starting Migration (Round 6 - Superadmin)...</h2>";
+
+    // 1. Update users table enum to include 'superadmin'
+    // We cannot use addColumnIfNotExists for modifying ENUM, need direct ALTER
+    try {
+        $pdo->exec("ALTER TABLE users MODIFY COLUMN role ENUM('admin', 'user', 'tag_editor', 'superadmin') NOT NULL DEFAULT 'user'");
+        echo "Updated 'role' column enum to include 'superadmin'.<br>";
+    } catch (Exception $e) {
+        echo "Error updating 'role' enum: " . $e->getMessage() . "<br>";
+    }
+
+    // 2. Promote User ID 1 to Superadmin (Bootstrapping)
+    try {
+        $stmt_sa = $pdo->prepare("UPDATE users SET role = 'superadmin' WHERE id = 1");
+        $stmt_sa->execute();
+        if ($stmt_sa->rowCount() > 0) {
+            echo "Promoted User ID 1 to 'superadmin'.<br>";
+        } else {
+            echo "User ID 1 not found or already superadmin.<br>";
+        }
+    } catch (Exception $e) {
+        echo "Error promoting user ID 1: " . $e->getMessage() . "<br>";
+    }
+
+    echo "<h3>Migration (Round 6) completed successfully!</h3>";
+
 } catch (Exception $e) {
     echo "<h3>Fatal Error: " . $e->getMessage() . "</h3>";
 }

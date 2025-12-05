@@ -13,20 +13,31 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 // Helper function to check roles
-function has_role($roles) {
+function has_role($roles)
+{
     if (!is_array($roles)) {
         $roles = [$roles];
     }
-    return in_array($_SESSION['role'] ?? '', $roles);
+
+    $user_role = $_SESSION['role'] ?? '';
+
+    // Superadmin inherits all permissions
+    if ($user_role === 'superadmin') {
+        return true;
+    }
+
+    return in_array($user_role, $roles);
 }
 
-function require_role($roles) {
+function require_role($roles)
+{
     if (!has_role($roles)) {
         die("Access Denied: You do not have permission to view this page.");
     }
 }
 
-function is_admin() {
+function is_admin()
+{
     return has_role('admin');
 }
 
@@ -35,14 +46,15 @@ function is_admin() {
 // For simplicity, let's fetch them if needed or store in session on login?
 // Storing in session is easier but requires login update. 
 // Let's fetch on demand for now to be safe and dynamic.
-function can_edit_tag($pdo, $tag_id) {
+function can_edit_tag($pdo, $tag_id)
+{
     if (is_admin() || has_role('user')) { // Admin and Full User can edit all
         return true;
     }
     if (has_role('tag_editor')) {
         $stmt = $pdo->prepare("SELECT 1 FROM user_tags WHERE user_id = ? AND tag_id = ?");
         $stmt->execute([$_SESSION['user_id'], $tag_id]);
-        return (bool)$stmt->fetch();
+        return (bool) $stmt->fetch();
     }
     return false;
 }
