@@ -43,7 +43,8 @@ if ($stream === 'Network_Total') {
                 $cdef_expr .= "," . $sum_parts[$k] . ",+";
             }
             $cmd_parts[] = "CDEF:totalMax=$cdef_expr";
-            $xport_parts[] = "XPORT:totalMax:\"Total Peak\"";
+            $cmd_parts[] = "CDEF:totalMaxCeil=totalMax,CEIL";
+            $xport_parts[] = "XPORT:totalMaxCeil:\"Total Peak\"";
             $legends[] = "Total Peak";
         }
     }
@@ -52,8 +53,9 @@ if ($stream === 'Network_Total') {
     if (file_exists($rrd_file)) {
         $cmd_parts[] = "DEF:avg=$rrd_file:listeners:AVERAGE";
         $cmd_parts[] = "DEF:max=$rrd_file:listeners:MAX";
+        $cmd_parts[] = "CDEF:maxCeil=max,CEIL";
         $xport_parts[] = "XPORT:avg:\"Average\"";
-        $xport_parts[] = "XPORT:max:\"Peak\"";
+        $xport_parts[] = "XPORT:maxCeil:\"Peak\"";
         $legends = ["Average", "Peak"];
     }
 }
