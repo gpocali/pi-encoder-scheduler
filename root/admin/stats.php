@@ -383,23 +383,35 @@ require_role(['admin', 'user']);
                     const isStacked = (key === 'Network_Total');
 
                     if (data.datasets && data.datasets.length > 0) {
-                        if (isStacked) {
-                            // For stacked, we need to sum up all datasets at each point
-                            // Assuming all datasets have same length
-                            const length = data.datasets[0].data.length;
-                            for (let i = 0; i < length; i++) {
-                                let sum = 0;
-                                for (const ds of data.datasets) {
-                                    sum += (ds.data[i] || 0);
-                                }
-                                if (sum > graphPeak) graphPeak = sum;
+                        // Check for "Total Peak" dataset first
+                        const totalPeakIndex = data.datasets.findIndex(ds => ds.label === 'Total Peak');
+
+                        if (totalPeakIndex !== -1) {
+                            // Use Total Peak for the number
+                            const totalPeakData = data.datasets[totalPeakIndex].data;
+                            for (const val of totalPeakData) {
+                                if (val > graphPeak) graphPeak = val;
                             }
+                            // Remove it from datasets so it doesn't show on graph
+                            data.datasets.splice(totalPeakIndex, 1);
                         } else {
-                            // For individual streams, find max of "Peak" dataset (usually index 1) or "Average" (index 0)
-                            // Or just iterate all data points of all datasets to be safe
-                            for (const ds of data.datasets) {
-                                for (const val of ds.data) {
-                                    if (val > graphPeak) graphPeak = val;
+                            // Fallback logic
+                            if (isStacked) {
+                                // For stacked, we need to sum up all datasets at each point
+                                const length = data.datasets[0].data.length;
+                                for (let i = 0; i < length; i++) {
+                                    let sum = 0;
+                                    for (const ds of data.datasets) {
+                                        sum += (ds.data[i] || 0);
+                                    }
+                                    if (sum > graphPeak) graphPeak = sum;
+                                }
+                            } else {
+                                // For individual streams
+                                for (const ds of data.datasets) {
+                                    for (const val of ds.data) {
+                                        if (val > graphPeak) graphPeak = val;
+                                    }
                                 }
                             }
                         }

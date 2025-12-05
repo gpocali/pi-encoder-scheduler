@@ -20,6 +20,7 @@ $legends = [];
 if ($stream === 'Network_Total') {
     $files = glob("$storage_dir/*_Global.rrd");
     $i = 0;
+    $sum_parts = [];
     if ($files) {
         foreach ($files as $file) {
             $basename = basename($file, '_Global.rrd');
@@ -27,9 +28,23 @@ if ($stream === 'Network_Total') {
                 continue;
 
             $cmd_parts[] = "DEF:val$i=$file:listeners:AVERAGE";
+            $cmd_parts[] = "DEF:max$i=$file:listeners:MAX";
             $xport_parts[] = "XPORT:val$i:\"$basename\"";
             $legends[] = $basename;
+
+            $sum_parts[] = "max$i";
             $i++;
+        }
+
+        if (!empty($sum_parts)) {
+            // RPN: val1,val2,+,val3,+...
+            $cdef_expr = $sum_parts[0];
+            for ($k = 1; $k < count($sum_parts); $k++) {
+                $cdef_expr .= "," . $sum_parts[$k] . ",+";
+            }
+            $cmd_parts[] = "CDEF:totalMax=$cdef_expr";
+            $xport_parts[] = "XPORT:totalMax:\"Total Peak\"";
+            $legends[] = "Total Peak";
         }
     }
 } else {
