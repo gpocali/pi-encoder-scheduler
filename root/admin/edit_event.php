@@ -457,9 +457,24 @@ if ($event['asset_id'] > 0) {
 // Let's check where $end_time_val is defined.
 // It is defined around line 250 (not shown in previous view, need to check).
 // Assuming $event['end_time'] is UTC.
+// Check if event is in the past
 $end_check = new DateTime($event['end_time'], new DateTimeZone('UTC'));
 $now_check = new DateTime('now', new DateTimeZone('UTC'));
-$is_read_only = ($end_check < $now_check);
+
+if (!empty($recurrence) && $recurrence !== 'none') {
+    // Recurring Event: Read-only only if the series has ended
+    if ($recur_forever || empty($recur_until)) {
+        $is_read_only = false;
+    } else {
+        // Series ends at the end of the "recur_until" day
+        $series_end = new DateTime($recur_until . ' 23:59:59');
+        $series_end->setTimezone(new DateTimeZone('UTC'));
+        $is_read_only = ($series_end < $now_check);
+    }
+} else {
+    // One-Off Event: Read-only if the specific event has passed
+    $is_read_only = ($end_check < $now_check);
+}
 
 ?>
 <!DOCTYPE html>
