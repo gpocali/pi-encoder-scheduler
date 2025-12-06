@@ -451,6 +451,8 @@ require_once 'auth.php';
                                 const d = new Date(t);
                                 if (period === '-1h' || period === '-3h') {
                                     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                } else if (period === '-3year') {
+                                    return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                                 } else {
                                     return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                                 }
