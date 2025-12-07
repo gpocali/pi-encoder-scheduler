@@ -490,6 +490,7 @@ if ($view == 'list') {
                 <tbody>
                 <tbody>
                     <?php foreach ($events as $ev):
+                        $live_tags = [];
                         $is_series = isset($ev['type']) && $ev['type'] == 'series';
                         $is_exception = !empty($ev['is_exception']);
 
@@ -528,7 +529,6 @@ if ($view == 'list') {
                             $edit_link = "edit_event.php?id=recur_" . $ev['id'] . "_0&" . http_build_query($_GET);
 
                             // Check if this recurring series is currently live
-                            $live_tags = [];
                             foreach ($live_status as $tag_id => $l_status) {
                                 if ($l_status['type'] == 'event' && isset($l_status['data']['recurring_event_id']) && $l_status['data']['recurring_event_id'] == $ev['id']) {
                                     $live_tags[] = $l_status['tag_name'];

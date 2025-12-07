@@ -485,7 +485,7 @@ if (!empty($recurrence) && $recurrence !== 'none') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $is_edit ? 'Edit Event' : 'Create Event'; ?> - WRHU Encoder Scheduler</title>
     <link rel="stylesheet" href="style.css">
-    <script src="includes/event_form_scripts.php"></script>
+    <?php include 'includes/event_form_scripts.php'; ?>
 </head>
 
 <body>
