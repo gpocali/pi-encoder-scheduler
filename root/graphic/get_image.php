@@ -43,7 +43,7 @@ if (!$asset) {
 }
 
 // 2. Prepare Cache Paths
-$upload_dir = __DIR__ . '/../uploads'; // Assumed relative path
+$upload_dir = '/uploads'; // Absolute path as used in api_upload.php and get_graphic.php
 $cache_dir = $upload_dir . '/cache';
 
 if (!is_dir($cache_dir)) {
