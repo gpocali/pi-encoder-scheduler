@@ -12,7 +12,7 @@ $ssh_user = 'root'; // The user allowed via Tailscale ACLs
 $nodes = [
     'WRHU-Icecast01' => [
         'host' => '100.109.186.28',
-        'map' => ['stream1-1.mp3' => 'WRHU', 'stream1-2.mp3' => 'WRHU', 'stream1-3.mp3' => 'WRHU', 'stream1-4.mp3' => 'WRHU', 'stream1-1-medium.mp3' => 'WRHU', 'stream1-2-medium.mp3' => 'WRHU', 'stream1-3-medium.mp3' => 'WRHU', 'stream1-4-medium.mp3' => 'WRHU', 'stream1-1-low.mp3' => 'WRHU', 'stream1-2-low.mp3' => 'WRHU', 'stream1-3-low.mp3' => 'WRHU', 'stream1-4-low.mp3' => 'WRHU', 'stream2-1.mp3' => 'HAWC', 'stream2-2.mp3' => 'HAWC', 'stream2-3.mp3' => 'HAWC', 'stream2-4.mp3' => 'HAWC', 'stream2-1-medium.mp3' => 'HAWC', 'stream2-2-medium.mp3' => 'HAWC', 'stream2-3-medium.mp3' => 'HAWC', 'stream2-4-medium.mp3' => 'HAWC', 'stream2-1-low.mp3' => 'HAWC', 'stream2-2-low.mp3' => 'HAWC', 'stream2-3-low.mp3' => 'HAWC', 'stream2-4-low.mp3' => 'HAWC', 'stream3-1.mp3' => 'SPEV', 'stream3-2.mp3' => 'SPEV', 'stream3-3.mp3' => 'SPEV', 'stream3-4.mp3' => 'SPEV', 'stream3-1-medium.mp3' => 'SPEV', 'stream3-2-medium.mp3' => 'SPEV', 'stream3-3-medium.mp3' => 'SPEV', 'stream3-4-medium.mp3' => 'SPEV', 'stream3-1-low.mp3' => 'SPEV', 'stream3-2-low.mp3' => 'SPEV', 'stream3-3-low.mp3' => 'SPEV', 'stream3-4-low.mp3' => 'SPEV']
+        'map' => ['stream1' => 'WRHU', 'stream2' => 'HAWC', 'stream3' => 'SPEV']
     ],
     'WRHU-Server01' => [
         'host' => '100.100.63.43',
