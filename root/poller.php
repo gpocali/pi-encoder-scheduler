@@ -142,7 +142,9 @@ while (true) {
                     }
                 }
             }
-        }
+        } else {
+			echo "No output from ".$node_name.".\n";
+		}
     }
 
     // --- B. SAVE JSON (Instant Live View) ---
