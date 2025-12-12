@@ -129,6 +129,7 @@ while (true) {
                             $live_data['nodes'][$node_name][$k]['total'] += $val;
                             $live_data['grand_total'] += $val;
 							$nodeTotal += $val;
+							echo $val."\n";
 
                             // Queue RRD Updates
                             $rrd_updates['nodes']["{$k}_{$node_name}"] = $val;
