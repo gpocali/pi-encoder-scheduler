@@ -102,6 +102,7 @@ while (true) {
 
             // Prepare node array in JSON
             $live_data['nodes'][$node_name] = [];
+			$nodeTotal = 0;
 
             foreach ($lines as $line) {
                 // Parse: /path/stream1_total:50
@@ -127,7 +128,7 @@ while (true) {
                             $live_data['totals'][$k]['total'] += $val;
                             $live_data['nodes'][$node_name][$k]['total'] += $val;
                             $live_data['grand_total'] += $val;
-							echo $node_name.": ".$val."\n;";
+							$nodeTotal += $val;
 
                             // Queue RRD Updates
                             $rrd_updates['nodes']["{$k}_{$node_name}"] = $val;
@@ -143,6 +144,7 @@ while (true) {
                     }
                 }
             }
+			echo $node_name.": ".$nodeTotal."\n";
         } else {
 			echo "No output from ".$node_name.".\n";
 		}
