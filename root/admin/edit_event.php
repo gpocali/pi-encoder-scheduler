@@ -170,7 +170,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
     $end_time_val = $_POST['end_time'];
     $priority = (int) $_POST['priority'];
     $asset_id = (int) $_POST['existing_asset_id'];
-    $update_scope = $_POST['update_scope'] ?? 'all'; // Default to 'all' to match UI and user expectation
+    $update_scope = $_POST['update_scope'] ?? 'future'; // Default to future (safe split) logic
+
+    if ($is_series) {
+        // ENFORCE SAFETY:
+        // 1. Always use 'future' (Split Series) logic to preserve history.
+        $update_scope = 'future';
+
+        // 2. Prevent backdating into the past. 
+        // If Start Date is in the past, move it to Today.
+        // This ensures the "Old" series ends yesterday, and the "New" series starts Today.
+        $today = date('Y-m-d');
+        if ($start_date < $today) {
+            $start_date = $today;
+            // We don't warn the user, just do it (as requested).
+        }
+    }
     $selected_tag_ids = $_POST['tag_ids'] ?? [];
 
     // Recurrence Params

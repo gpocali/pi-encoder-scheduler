@@ -12,7 +12,7 @@
 
 <div class="card">
     <form action="<?php echo $is_edit ? "edit_event.php?" . $_SERVER['QUERY_STRING'] : "create_event.php"; ?>"
-        method="POST" onsubmit="return validateForm()">
+        method="POST">
 
         <?php if ($is_edit): ?>
             <input type="hidden" name="action" value="update_event">
@@ -112,20 +112,6 @@
                 toggleRecurrence();
                 toggleRecurForever();
             });
-
-            function validateForm() {
-                const startDateInput = document.getElementById('start_date');
-                if (!startDateInput) return true;
-
-                const startDate = new Date(startDateInput.value + 'T00:00:00');
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-
-                if (startDate < today) {
-                    return confirm("The selected Start Date is in the past. If you proceed, a new recurring series will be created starting from this past date (or the event will be logged in the past). Are you sure you want to continue?");
-                }
-                return true;
-            }
         </script>
 
         <div class="row">
@@ -182,20 +168,6 @@
         </div>
 
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:nowrap;">
-            <?php if ($is_edit && $is_series && (!isset($is_read_only) || !$is_read_only)): ?>
-                <div style="display:flex; align-items:center; gap:5px; white-space:nowrap;">
-                    <label for="update_scope" style="margin:0;">Update Scope:</label>
-                    <select name="update_scope" id="update_scope"
-                        style="padding: 10px; background: #333; color: #fff; border: 1px solid #444; border-radius: 4px;">
-                        <?php $scope = $_POST['update_scope'] ?? 'future'; ?>
-                        <option value="future" <?php if ($scope == 'future')
-                            echo 'selected'; ?>>Entire Series (This & Future)</option>
-                        <option value="only_this" <?php if ($scope == 'only_this')
-                            echo 'selected'; ?>>Only This Instance
-                        </option>
-                    </select>
-                </div>
-            <?php endif; ?>
             <?php if (!isset($is_read_only) || !$is_read_only): ?>
                 <button type="submit" class="btn"
                     style="flex:1; white-space:nowrap;"><?php echo $is_edit ? 'Update Event' : 'Create Event'; ?></button>
