@@ -47,10 +47,15 @@ fi
 # Copy new config
 cp nginx_default.conf /etc/nginx/http.d/default.conf
 
-# Create fastcgi-php.conf if it doesn't exist
-if [ ! -f /etc/nginx/snippets/fastcgi-php.conf ]; then
-    echo " Creating fastcgi-php.conf..."
-    cat > /etc/nginx/snippets/fastcgi-php.conf << 'FASTCGI'
+# Copy fastcgi-php.conf from repo
+if [ -f fastcgi-php.conf ]; then
+    echo " Installing fastcgi-php.conf..."
+    cp fastcgi-php.conf /etc/nginx/snippets/fastcgi-php.conf
+else
+    echo " WARNING: fastcgi-php.conf not found in current directory"
+    # Fallback: create basic version if repo file missing
+    if [ ! -f /etc/nginx/snippets/fastcgi-php.conf ]; then
+        cat > /etc/nginx/snippets/fastcgi-php.conf << 'FASTCGI'
 fastcgi_param  SCRIPT_FILENAME    $document_root$fastcgi_script_name;
 fastcgi_param  QUERY_STRING       $query_string;
 fastcgi_param  REQUEST_METHOD     $request_method;
@@ -77,8 +82,8 @@ fastcgi_param  SERVER_NAME        $server_name;
 # PHP only, required if PHP was built with --enable-force-cgi-redirect
 fastcgi_param  REDIRECT_STATUS    200;
 FASTCGI
-else
-    echo " fastcgi-php.conf already exists, skipping..."
+        echo " Created fallback fastcgi-php.conf"
+    fi
 fi
 
 ### 4. SSL Certificate ###
