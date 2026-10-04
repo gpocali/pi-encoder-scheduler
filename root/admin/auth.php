@@ -17,7 +17,12 @@ function has_role($roles) {
     if (!is_array($roles)) {
         $roles = [$roles];
     }
-    return in_array($_SESSION['role'] ?? '', $roles);
+    $user_role = $_SESSION['role'] ?? '';
+    // superadmin has all admin privileges
+    if ($user_role === 'superadmin' && in_array('admin', $roles)) {
+        return true;
+    }
+    return in_array($user_role, $roles);
 }
 
 function require_role($roles) {
