@@ -45,17 +45,18 @@ if [ -f /etc/nginx/http.d/default.conf ]; then
 fi
 
 # Copy new config
-cp nginx_default.conf /etc/nginx/http.d/default.conf
+SCRIPT_DIR=$(dirname "$0")
+cp "$SCRIPT_DIR/nginx_default.conf" /etc/nginx/http.d/default.conf
 
 # Copy fastcgi-php.conf from repo
-if [ -f fastcgi-php.conf ]; then
+if [ -f "$SCRIPT_DIR/fastcgi-php.conf" ]; then
     echo " Installing fastcgi-php.conf..."
-    cp fastcgi-php.conf /etc/nginx/snippets/fastcgi-php.conf
+    cp "$SCRIPT_DIR/fastcgi-php.conf" /etc/nginx/snippets/fastcgi-php.conf
+elif [ -f /etc/nginx/snippets/fastcgi-php.conf ]; then
+    echo " fastcgi-php.conf already exists, skipping..."
 else
-    echo " WARNING: fastcgi-php.conf not found in current directory"
-    # Fallback: create basic version if repo file missing
-    if [ ! -f /etc/nginx/snippets/fastcgi-php.conf ]; then
-        cat > /etc/nginx/snippets/fastcgi-php.conf << 'FASTCGI'
+    echo " WARNING: fastcgi-php.conf not found, creating basic version..."
+    cat > /etc/nginx/snippets/fastcgi-php.conf << 'FASTCGI'
 fastcgi_param  SCRIPT_FILENAME    $document_root$fastcgi_script_name;
 fastcgi_param  QUERY_STRING       $query_string;
 fastcgi_param  REQUEST_METHOD     $request_method;
