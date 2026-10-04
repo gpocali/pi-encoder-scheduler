@@ -83,8 +83,7 @@ fastcgi_param  SERVER_NAME        $server_name;
 # PHP only, required if PHP was built with --enable-force-cgi-redirect
 fastcgi_param  REDIRECT_STATUS    200;
 FASTCGI
-        echo " Created fallback fastcgi-php.conf"
-    fi
+    echo " Created fallback fastcgi-php.conf"
 fi
 
 ### 4. SSL Certificate ###

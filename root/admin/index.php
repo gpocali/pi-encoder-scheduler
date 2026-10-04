@@ -132,11 +132,12 @@ $per_page = 20;
 $where_clauses = ["1=1"];
 $params = [];
 
-// Permission Filter
-$in_clause = implode(',', array_fill(0, count($allowed_tag_ids), '?'));
-// Query needs to join event_tags to filter
-$where_clauses[] = "et.tag_id IN ($in_clause)";
-$params = array_merge($params, $allowed_tag_ids);
+// Permission Filter - only add if user has access to tags
+if (!empty($allowed_tag_ids)) {
+    $in_clause = implode(',', array_fill(0, count($allowed_tag_ids), '?'));
+    $where_clauses[] = "et.tag_id IN ($in_clause)";
+    $params = array_merge($params, $allowed_tag_ids);
+}
 
 // User Filters
 if ($filter_tag) {
