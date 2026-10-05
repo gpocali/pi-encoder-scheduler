@@ -1,9 +1,5 @@
 <?php
-// Optional: load db_connect.php if it exists (for web context)
-// In test context, PDO is passed directly to constructor
-if (file_exists(__DIR__ . '/../../db_connect.php')) {
-    require_once __DIR__ . '/../../db_connect.php';
-}
+require_once __DIR__ . '/../../db_connect.php';
 
 class EventRepository
 {
@@ -98,29 +94,12 @@ class EventRepository
     }
 
     /**
-     * Get future events (one-offs + recurring) for List View.
+     * Get future one-off events for List View.
      */
     public function getFutureEvents($tagId = null)
     {
         $now = gmdate('Y-m-d H:i:s');
-        
-        // Get future one-off events
-        $oneOffs = $this->fetchOneOffEvents($now, '2037-12-31', $tagId, true);
-        
-        // Get recurring series and expand them
-        $series = $this->fetchRecurringSeries($now, '2037-12-31', $tagId, true);
-        $recurInstances = [];
-        foreach ($series as $s) {
-            $recurInstances = array_merge($recurInstances, $this->expandRecurrence($s, $now, '2037-12-31'));
-        }
-        
-        // Combine and sort by start time
-        $allEvents = array_merge($oneOffs, $recurInstances);
-        usort($allEvents, function ($a, $b) {
-            return strcmp($a['start_time'], $b['start_time']);
-        });
-        
-        return $allEvents;
+        return $this->fetchOneOffEvents($now, '2037-12-31', $tagId, true);
     }
 
     /**

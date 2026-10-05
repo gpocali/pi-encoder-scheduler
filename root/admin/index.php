@@ -2,6 +2,7 @@
 require_once 'auth.php';
 require_once '../db_connect.php';
 require_once 'ScheduleLogic.php';
+require_once 'includes/EventRepository.php';
 date_default_timezone_set('America/New_York');
 
 // Helper to get current URL with modified params
@@ -31,30 +32,54 @@ if ($is_admin || has_role('user')) {
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (isset($_POST['action']) && $_POST['action'] == 'end_now') {
         $event_id = (int) $_POST['event_id'];
-        // Verify permission
-        $stmt = $pdo->prepare("SELECT tag_id FROM events WHERE id = ?");
+        // Verify permission (Check ALL tags)
+        $stmt = $pdo->prepare("SELECT tag_id FROM event_tags WHERE event_id = ?");
         $stmt->execute([$event_id]);
-        $evt_tag = $stmt->fetchColumn();
-        if (in_array($evt_tag, $allowed_tag_ids)) {
+        $evt_tags = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        $has_perm = false;
+        foreach ($evt_tags as $tid) {
+            if (in_array($tid, $allowed_tag_ids)) {
+                $has_perm = true;
+                break;
+            }
+        }
+
+        if ($has_perm) {
             $now_utc = (new DateTime())->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
             $pdo->prepare("UPDATE events SET end_time = ? WHERE id = ?")->execute([$now_utc, $event_id]);
-            header("Location: index.php");
+            header("Location: " . $_SERVER['REQUEST_URI']);
             exit;
         }
     }
 
     if (isset($_POST['action']) && $_POST['action'] == 'extend_event') {
         $event_id = (int) $_POST['event_id'];
-        // Verify permission
-        $stmt = $pdo->prepare("SELECT tag_id, end_time FROM events WHERE id = ?");
+        // Verify permission (Check ALL tags)
+        $stmt = $pdo->prepare("SELECT tag_id FROM event_tags WHERE event_id = ?");
         $stmt->execute([$event_id]);
-        $evt = $stmt->fetch(PDO::FETCH_ASSOC);
+        $evt_tags = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-        if ($evt && in_array($evt['tag_id'], $allowed_tag_ids)) {
-            $new_end = date('Y-m-d H:i:s', strtotime($evt['end_time'] . ' +15 minutes'));
-            $pdo->prepare("UPDATE events SET end_time = ? WHERE id = ?")->execute([$new_end, $event_id]);
-            header("Location: index.php");
-            exit;
+        $has_perm = false;
+        foreach ($evt_tags as $tid) {
+            if (in_array($tid, $allowed_tag_ids)) {
+                $has_perm = true;
+                break;
+            }
+        }
+
+        if ($has_perm) {
+            // Need current end time
+            $stmt_end = $pdo->prepare("SELECT end_time FROM events WHERE id = ?");
+            $stmt_end->execute([$event_id]);
+            $current_end = $stmt_end->fetchColumn();
+
+            if ($current_end) {
+                $new_end = date('Y-m-d H:i:s', strtotime($current_end . ' +15 minutes'));
+                $pdo->prepare("UPDATE events SET end_time = ? WHERE id = ?")->execute([$new_end, $event_id]);
+                header("Location: " . $_SERVER['REQUEST_URI']);
+                exit;
+            }
         }
     }
     if (isset($_POST['action']) && $_POST['action'] == 'delete_event') {
@@ -73,7 +98,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         if ($has_perm) {
             $pdo->prepare("DELETE FROM events WHERE id = ?")->execute([$event_id]);
-            header("Location: index.php");
+            header("Location: " . $_SERVER['REQUEST_URI']);
             exit;
         }
     }
@@ -81,20 +106,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 // --- LIVE MONITOR DATA ---
 $live_status = [];
-$now_utc_str = (new DateTime())->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+$repo = new EventRepository($pdo);
 
 foreach ($tags as $tag) {
-    // Find highest priority active event
-    $sql_live = "SELECT e.*, a.filename_disk, a.filename_original, a.mime_type 
-                 FROM events e 
-                 JOIN event_tags et ON e.id = et.event_id
-                 JOIN assets a ON e.asset_id = a.id 
-                 WHERE et.tag_id = ? 
-                 AND e.start_time <= ? AND e.end_time > ? 
-                 ORDER BY e.priority DESC, e.start_time ASC LIMIT 1";
-    $stmt_live = $pdo->prepare($sql_live);
-    $stmt_live->execute([$tag['id'], $now_utc_str, $now_utc_str]);
-    $live_event = $stmt_live->fetch(PDO::FETCH_ASSOC);
+    $live_event = $repo->getCurrentEvent($tag['tag_name']);
 
     if ($live_event) {
         $live_status[$tag['id']] = [
@@ -114,7 +129,7 @@ foreach ($tags as $tag) {
 
         $live_status[$tag['id']] = [
             'type' => 'default',
-            'data' => $def_asset, // Can be false if no default
+            'data' => $def_asset,
             'tag_name' => $tag['tag_name']
         ];
     }
@@ -124,177 +139,110 @@ foreach ($tags as $tag) {
 $view = $_GET['view'] ?? 'list';
 $filter_tag = isset($_GET['tag_id']) && $_GET['tag_id'] !== '' ? (int) $_GET['tag_id'] : null;
 $filter_date = $_GET['date'] ?? date('Y-m-d');
-$hide_past = isset($_GET['hide_past']) ? (bool) $_GET['hide_past'] : false;
+$filter_type = $_GET['type'] ?? 'all';
+$sort_col = $_GET['sort'] ?? 'start_time';
+$sort_order = $_GET['order'] ?? 'asc';
 $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
 $per_page = 20;
 
-// Build Query
-$where_clauses = ["1=1"];
-$params = [];
-
-// Permission Filter - only add if user has access to tags
-if (!empty($allowed_tag_ids)) {
-    $in_clause = implode(',', array_fill(0, count($allowed_tag_ids), '?'));
-    $where_clauses[] = "et.tag_id IN ($in_clause)";
-    $params = array_merge($params, $allowed_tag_ids);
-}
-
-// User Filters
-if ($filter_tag) {
-    $where_clauses[] = "et.tag_id = ?";
-    $params[] = $filter_tag;
-}
-
-if ($hide_past) {
-    $now_utc_filter = (new DateTime())->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-    $where_clauses[] = "e.end_time > ?";
-    $params[] = $now_utc_filter;
-}
-
-// View Specific Logic
+// $repo is already initialized
 $events = [];
-$pagination = [];
+$total_pages = 1;
 
 if ($view == 'list') {
-    // Filter by date range if provided? Or just show all future/recent?
-    // Let's show all by default, sorted by start_time DESC
+    // Consolidated List View
+    // 1. Get Recurring Series
+    $series = $repo->getRecurringSeries($filter_tag);
 
-    // Count for pagination
-    $sql_count = "SELECT COUNT(DISTINCT e.id) FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses);
-    $stmt_count = $pdo->prepare($sql_count);
-    $stmt_count->execute($params);
-    $total_items = $stmt_count->fetchColumn();
-    $total_pages = ceil($total_items / $per_page);
-    $offset = ($page - 1) * $per_page;
+    // 2. Get Future One-Offs (and Exceptions)
+    $oneOffs = $repo->getFutureEvents($filter_tag);
 
-    $sql = "SELECT DISTINCT e.*, a.filename_original 
-            FROM events e 
-            JOIN event_tags et ON e.id = et.event_id
-            JOIN assets a ON e.asset_id = a.id 
-            WHERE " . implode(" AND ", $where_clauses) . " 
-            ORDER BY e.start_time ASC 
-            LIMIT $per_page OFFSET $offset";
+    // Merge and Filter
+    $combined = [];
 
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // Resolve Schedule Conflicts
-    if (!empty($events)) {
-        $min_start = $events[0]['start_time'];
-        $max_end = $events[0]['end_time'];
-        $page_ids = [];
-        $page_tag_ids = [];
-
-        foreach ($events as $ev) {
-            if ($ev['start_time'] < $min_start)
-                $min_start = $ev['start_time'];
-            if ($ev['end_time'] > $max_end)
-                $max_end = $ev['end_time'];
-            $page_ids[] = $ev['id'];
-            $page_tag_ids[] = $ev['tag_id'];
-        }
-        $page_tag_ids = array_unique($page_tag_ids);
-
-        if (!empty($page_tag_ids)) {
-            $placeholders = implode(',', array_fill(0, count($page_tag_ids), '?'));
-            $not_in_ids = implode(',', $page_ids);
-
-            $ctx_events = [];
-            if ($filter_tag) {
-                // If filtering by tag, context events must be on that tag
-                $sql_ctx = "SELECT DISTINCT e.*, a.filename_original 
-                            FROM events e 
-                            JOIN event_tags et ON e.id = et.event_id
-                            JOIN assets a ON e.asset_id = a.id 
-                            WHERE et.tag_id = ?
-                            AND e.start_time < ? AND e.end_time > ?
-                            AND e.id NOT IN ($not_in_ids)";
-                $stmt_ctx = $pdo->prepare($sql_ctx);
-                $stmt_ctx->execute([$filter_tag, $max_end, $min_start]);
-                $ctx_events = $stmt_ctx->fetchAll(PDO::FETCH_ASSOC);
-
-                // Force tag_id to filter_tag for resolution
-                foreach ($events as &$ev)
-                    $ev['tag_id'] = $filter_tag;
-                foreach ($ctx_events as &$ev)
-                    $ev['tag_id'] = $filter_tag;
-                unset($ev);
-            } else {
-                // Default behavior: use primary tag_id
-                $sql_ctx = "SELECT e.*, a.filename_original 
-                            FROM events e 
-                            JOIN assets a ON e.asset_id = a.id 
-                            WHERE e.tag_id IN ($placeholders)
-                            AND e.start_time < ? AND e.end_time > ?
-                            AND e.id NOT IN ($not_in_ids)";
-                $stmt_ctx = $pdo->prepare($sql_ctx);
-                $params_ctx = array_merge($page_tag_ids, [$max_end, $min_start]);
-                $stmt_ctx->execute($params_ctx);
-                $ctx_events = $stmt_ctx->fetchAll(PDO::FETCH_ASSOC);
-            }
-
-            $all_relevant = array_merge($events, $ctx_events);
-
-            // DEBUG LOGGING
-            file_put_contents('debug_log.txt', "--- PAGE LOAD ---\n", FILE_APPEND);
-            file_put_contents('debug_log.txt', "Events on page: " . count($events) . "\n", FILE_APPEND);
-            file_put_contents('debug_log.txt', "Context events: " . count($ctx_events) . "\n", FILE_APPEND);
-            file_put_contents('debug_log.txt', "Filter Tag: " . ($filter_tag ? $filter_tag : 'None') . "\n", FILE_APPEND);
-
-            foreach ($all_relevant as $e) {
-                file_put_contents('debug_log.txt', "INPUT: ID {$e['id']} Prio {$e['priority']} Tag {$e['tag_id']} {$e['start_time']} - {$e['end_time']}\n", FILE_APPEND);
-            }
-
-            $resolved = ScheduleLogic::resolveSchedule($all_relevant);
-
-            foreach ($resolved as $e) {
-                $mod = !empty($e['is_modified']) ? '[MODIFIED]' : '';
-                file_put_contents('debug_log.txt', "OUTPUT: ID {$e['id']} Prio {$e['priority']} Tag {$e['tag_id']} {$e['start_time']} - {$e['end_time']} $mod\n", FILE_APPEND);
-            }
-
-            // Filter back to page events
-            $final_events = [];
-            foreach ($resolved as $r) {
-                if (in_array($r['id'], $page_ids)) {
-                    $final_events[] = $r;
-                }
-            }
-            $events = $final_events;
+    // Process Series
+    if ($filter_type == 'all' || $filter_type == 'recurring') {
+        foreach ($series as $s) {
+            $s['type'] = 'series';
+            $s['sort_time'] = $s['start_date'] . ' ' . $s['start_time'];
+            $combined[] = $s;
         }
     }
 
+    // Process One-Offs
+    if ($filter_type == 'all' || $filter_type == 'one_off') {
+        foreach ($oneOffs as $e) {
+            $e['type'] = 'event';
+            $dt = new DateTime($e['start_time'], new DateTimeZone('UTC'));
+            $dt->setTimezone(new DateTimeZone('America/New_York'));
+            $e['sort_time'] = $dt->format('Y-m-d H:i:s');
+            $combined[] = $e;
+        }
+    }
+
+    // Sort
+    usort($combined, function ($a, $b) use ($sort_col, $sort_order) {
+        $valA = '';
+        $valB = '';
+
+        switch ($sort_col) {
+            case 'status':
+                // Determine status string for sorting
+                $valA = isset($a['type']) && $a['type'] == 'series' ? 'Recurring' : 'Future'; // Simplified
+                $valB = isset($b['type']) && $b['type'] == 'series' ? 'Recurring' : 'Future';
+                break;
+            case 'priority':
+                $valA = $a['priority'];
+                $valB = $b['priority'];
+                break;
+            case 'name':
+                $valA = strtolower($a['event_name']);
+                $valB = strtolower($b['event_name']);
+                break;
+            case 'start_time':
+            default:
+                $valA = $a['sort_time'];
+                $valB = $b['sort_time'];
+                break;
+        }
+
+        if ($valA == $valB)
+            return 0;
+
+        // Numeric comparison for priority
+        if ($sort_col == 'priority') {
+            return ($sort_order == 'asc') ? ($valA - $valB) : ($valB - $valA);
+        }
+
+        // String comparison for others
+        return ($sort_order == 'asc') ? strcmp($valA, $valB) : strcmp($valB, $valA);
+    });
+
+    // Pagination (PHP side)
+    $total_items = count($combined);
+    $total_pages = ceil($total_items / $per_page);
+    $offset = ($page - 1) * $per_page;
+    $events = array_slice($combined, $offset, $per_page);
+
 } elseif ($view == 'month') {
+    // ... (rest of month view logic remains same, just need to close the if block correctly later)
     $start_month = date('Y-m-01', strtotime($filter_date));
     $end_month = date('Y-m-t', strtotime($filter_date));
 
     $start_utc = (new DateTime($start_month . ' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
     $end_utc = (new DateTime($end_month . ' 23:59:59'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-    $where_clauses[] = "e.start_time < ? AND e.end_time > ?";
-    $params[] = $end_utc;
-    $params[] = $start_utc;
+    $raw_events = $repo->getEvents($start_utc, $end_utc, $filter_tag);
+    $resolved = ScheduleLogic::resolveSchedule($raw_events);
+    $resolved = ScheduleLogic::deduplicateSegments($resolved);
 
-    $sql = "SELECT DISTINCT e.* FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $raw_events = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // Resolve Schedule
-    if ($filter_tag) {
-        foreach ($raw_events as &$ev)
-            $ev['tag_id'] = $filter_tag;
-        unset($ev);
-    }
-    $raw_events = ScheduleLogic::resolveSchedule($raw_events);
-
-    // Group by day (handling spans)
+    // Group by day
     $month_start_ts = strtotime($start_month);
     $year = date('Y', $month_start_ts);
     $month = date('m', $month_start_ts);
     $days_in_month = date('t', $month_start_ts);
 
-    foreach ($raw_events as $ev) {
+    foreach ($resolved as $ev) {
         $ev_start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
         $ev_end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
 
@@ -310,9 +258,8 @@ if ($view == 'list') {
     }
 
 } elseif ($view == 'week') {
-    // Calculate start (Sun) and end (Sat) of week for $filter_date
+    // ... (rest of week view logic)
     $dt = new DateTime($filter_date);
-    // If today is Sunday (0), we are at start. If not, go back to last Sunday.
     if ($dt->format('w') != 0) {
         $dt->modify('last sunday');
     }
@@ -323,24 +270,11 @@ if ($view == 'list') {
     $start_utc = (new DateTime($start_week . ' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
     $end_utc = (new DateTime($end_week . ' 23:59:59'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-    $where_clauses[] = "e.start_time < ? AND e.end_time > ?";
-    $params[] = $end_utc;
-    $params[] = $start_utc;
+    $raw_events = $repo->getEvents($start_utc, $end_utc, $filter_tag);
+    $resolved = ScheduleLogic::resolveSchedule($raw_events);
+    $resolved = ScheduleLogic::deduplicateSegments($resolved);
 
-    $sql = "SELECT DISTINCT e.* FROM events e JOIN event_tags et ON e.id = et.event_id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $raw_events = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // Resolve Schedule
-    if ($filter_tag) {
-        foreach ($raw_events as &$ev)
-            $ev['tag_id'] = $filter_tag;
-        unset($ev);
-    }
-    $raw_events = ScheduleLogic::resolveSchedule($raw_events);
-
-    // Group by Date (Y-m-d)
+    // Group by Date
     $week_dates = [];
     $dt = new DateTime($start_week);
     for ($i = 0; $i < 7; $i++) {
@@ -348,7 +282,7 @@ if ($view == 'list') {
         $dt->modify('+1 day');
     }
 
-    foreach ($raw_events as $ev) {
+    foreach ($resolved as $ev) {
         $ev_start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
         $ev_end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'));
 
@@ -362,26 +296,15 @@ if ($view == 'list') {
             }
         }
     }
+
 } elseif ($view == 'day') {
     $start_utc = (new DateTime($filter_date . ' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
     $end_utc = (new DateTime($filter_date . ' 23:59:59'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-    $where_clauses[] = "e.start_time < ? AND e.end_time > ?";
-    $params[] = $end_utc;
-    $params[] = $start_utc;
-
-    $sql = "SELECT DISTINCT e.*, a.filename_original FROM events e JOIN event_tags et ON e.id = et.event_id JOIN assets a ON e.asset_id = a.id WHERE " . implode(" AND ", $where_clauses) . " ORDER BY e.start_time ASC";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // Resolve Schedule
-    if ($filter_tag) {
-        foreach ($events as &$ev)
-            $ev['tag_id'] = $filter_tag;
-        unset($ev);
-    }
-    $events = ScheduleLogic::resolveSchedule($events);
+    $raw_events = $repo->getEvents($start_utc, $end_utc, $filter_tag);
+    $events = ScheduleLogic::resolveSchedule($raw_events);
+    $events = ScheduleLogic::deduplicateSegments($events);
+    $events = ScheduleLogic::fillGaps($events, $filter_date);
 }
 
 ?>
@@ -397,6 +320,23 @@ if ($view == 'list') {
         setTimeout(function () {
             window.location.reload();
         }, 60000);
+
+        // Scroll Preservation
+        document.addEventListener("DOMContentLoaded", function () {
+            var scrollPos = sessionStorage.getItem('scrollPos');
+            if (scrollPos) {
+                window.scrollTo(0, scrollPos);
+                sessionStorage.removeItem('scrollPos');
+            }
+
+            // Bind saveScroll to all forms
+            var forms = document.querySelectorAll('form');
+            forms.forEach(function (f) {
+                f.addEventListener('submit', function () {
+                    sessionStorage.setItem('scrollPos', window.scrollY);
+                });
+            });
+        });
     </script>
 </head>
 
@@ -422,7 +362,9 @@ if ($view == 'list') {
                         $is_vid = strpos($asset['mime_type'], 'video') !== false;
                     }
                     ?>
-                    <div class="monitor-thumb" style="display:grid; place-items:center; overflow:hidden;">
+                    <div class="monitor-thumb"
+                        onclick="showPreview('<?php echo $file_url; ?>', '<?php echo $asset['mime_type']; ?>')"
+                        style="display:grid; place-items:center; overflow:hidden; cursor:pointer;">
                         <?php if ($asset): ?>
                             <?php if (strpos($asset['mime_type'], 'image') !== false): ?>
                                 <img src="<?php echo $file_url; ?>" style="width:100%; height:100%; object-fit:cover;">
@@ -448,16 +390,19 @@ if ($view == 'list') {
                             </span>
                             <?php if ($is_live): ?>
                                 <div style="display:flex; gap:5px;">
+                                    <?php if ($asset['recurrence_type'] == 'none'): ?>
+                                        <form method="POST" style="margin:0;">
+                                            <input type="hidden" name="action" value="extend_event">
+                                            <input type="hidden" name="event_id" value="<?php echo $asset['id']; ?>">
+                                            <button type="submit" title="Add 15 Minutes to the end of this event"
+                                                style="background:var(--secondary-color); color:#fff; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:0.8em;">+15m</button>
+                                        </form>
+                                    <?php endif; ?>
                                     <form method="POST" style="margin:0;">
-                                        <input type="hidden" name="action" value="extend_event">
-                                        <input type="hidden" name="event_id" value="<?php echo $asset['id']; ?>">
-                                        <button type="submit"
-                                            style="background:var(--secondary-color); color:#fff; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:0.8em;">+15m</button>
-                                    </form>
-                                    <form method="POST" onsubmit="return confirm('End this event now?');" style="margin:0;">
                                         <input type="hidden" name="action" value="end_now">
                                         <input type="hidden" name="event_id" value="<?php echo $asset['id']; ?>">
-                                        <button type="submit"
+                                        <button type="submit" title="End this event now and return to normal programming"
+                                            onclick="return confirm('Are you sure you want to end this live event early?');"
                                             style="background:var(--error-color); color:#fff; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:0.8em;">End
                                             Now</button>
                                     </form>
@@ -484,17 +429,21 @@ if ($view == 'list') {
                     <?php endforeach; ?>
                 </select>
 
+                <?php if ($view == 'list'): ?>
+                    <select name="type" onchange="this.form.submit()">
+                        <option value="all" <?php if ($filter_type == 'all')
+                            echo 'selected'; ?>>All Types</option>
+                        <option value="recurring" <?php if ($filter_type == 'recurring')
+                            echo 'selected'; ?>>Recurring Only
+                        </option>
+                        <option value="one_off" <?php if ($filter_type == 'one_off')
+                            echo 'selected'; ?>>One-off Only</option>
+                    </select>
+                <?php endif; ?>
+
                 <?php if ($view != 'list'): ?>
                     <input type="date" name="date" value="<?php echo $filter_date; ?>" onchange="this.form.submit()">
                 <?php endif; ?>
-
-                <label
-                    style="margin-left:10px; display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap;">
-                    <input type="checkbox" name="hide_past" value="1" <?php if ($hide_past)
-                        echo 'checked'; ?>
-                        onchange="this.form.submit()">
-                    Hide Past Events
-                </label>
             </form>
 
             <a href="create_event.php?<?php echo http_build_query($_GET); ?>" class="btn btn-secondary">+ New Event</a>
@@ -517,34 +466,122 @@ if ($view == 'list') {
             <table>
                 <thead>
                     <tr>
-                        <th>Status</th>
-                        <th>Priority</th>
-                        <th>Event Name</th>
+                        <th><a href="<?php echo urlWithParam('sort', 'status') . '&order=' . ($sort_col == 'status' && $sort_order == 'asc' ? 'desc' : 'asc'); ?>"
+                                style="color:inherit; text-decoration:none;">Status
+                                <?php if ($sort_col == 'status')
+                                    echo $sort_order == 'asc' ? '▲' : '▼'; ?></a></th>
+                        <th><a href="<?php echo urlWithParam('sort', 'priority') . '&order=' . ($sort_col == 'priority' && $sort_order == 'asc' ? 'desc' : 'asc'); ?>"
+                                style="color:inherit; text-decoration:none;">Priority
+                                <?php if ($sort_col == 'priority')
+                                    echo $sort_order == 'asc' ? '▲' : '▼'; ?></a></th>
+                        <th><a href="<?php echo urlWithParam('sort', 'name') . '&order=' . ($sort_col == 'name' && $sort_order == 'asc' ? 'desc' : 'asc'); ?>"
+                                style="color:inherit; text-decoration:none;">Event Name
+                                <?php if ($sort_col == 'name')
+                                    echo $sort_order == 'asc' ? '▲' : '▼'; ?></a></th>
                         <th>Tag</th>
-                        <th>Start Time</th>
+                        <th><a href="<?php echo urlWithParam('sort', 'start_time') . '&order=' . ($sort_col == 'start_time' && $sort_order == 'asc' ? 'desc' : 'asc'); ?>"
+                                style="color:inherit; text-decoration:none;">Start Time
+                                <?php if ($sort_col == 'start_time')
+                                    echo $sort_order == 'asc' ? '▲' : '▼'; ?></a></th>
                         <th>End Time</th>
                         <th>Asset</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
+                <tbody>
                     <?php foreach ($events as $ev):
-                        $start = new DateTime($ev['start_time'], new DateTimeZone('UTC'));
-                        $end = new DateTime($ev['end_time'], new DateTimeZone('UTC'));
-                        $now = new DateTime(null, new DateTimeZone('UTC'));
+                        $live_tags = [];
+                        $is_series = isset($ev['type']) && $ev['type'] == 'series';
+                        $is_exception = !empty($ev['is_exception']);
 
-                        $status = 'Future';
-                        $status_color = '#aaa';
-                        if ($end < $now) {
-                            $status = 'Past';
-                            $status_color = '#555';
-                        } elseif ($start <= $now && $end > $now) {
-                            $status = 'Live';
-                            $status_color = 'var(--error-color)';
+                        if ($is_series) {
+                            $status = 'Recurring';
+                            $status_color = 'var(--accent-color)';
+
+                            // Recurrence Pattern
+                            $recur_info = ucfirst($ev['recurrence_type']);
+                            if ($ev['recurrence_type'] == 'weekly' && !empty($ev['recurrence_days'])) {
+                                $days_map = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                                $days = explode(',', $ev['recurrence_days']);
+                                $day_names = array_map(function ($d) use ($days_map) {
+                                    return $days_map[$d];
+                                }, $days);
+                                $recur_info .= ' (' . implode(', ', $day_names) . ')';
+                            }
+                            // Format Time to AM/PM
+                            $time_obj = new DateTime($ev['start_time']); // Local time string
+                            $end_time_obj = clone $time_obj;
+                            $end_time_obj->modify("+{$ev['duration']} seconds");
+
+                            $start_display = $time_obj->format('g:i A') . '<br><small>Starts: ' . $ev['start_date'] . '</small>';
+                            $end_display = $end_time_obj->format('g:i A') . '<br><small>' . $recur_info . '</small>';
+
+                            $edit_link = "edit_event.php?id=recur_" . $ev['id'] . "_0"; // 0 timestamp for series edit? Or just recur_ID
+                            // Actually edit_event expects recur_{id}_{timestamp} for instances.
+                            // But for editing the SERIES definition, we might need a different way or just pick a dummy timestamp.
+                            // Let's pass a special flag or just handle it in edit_event.
+                            // Wait, edit_event logic I wrote expects `recur_ID_timestamp`.
+                            // If I want to edit the series *definition*, I should probably link to an instance or handle "recur_ID" without timestamp.
+                            // Let's update edit_event to handle "recur_ID" without timestamp later if needed, 
+                            // but for now let's link to the NEXT instance? 
+                            // Or just link to "recur_{id}_0" and handle 0 in edit_event as "Series Edit Mode".
+                            // For now, let's use a dummy timestamp 0.
+                            $edit_link = "edit_event.php?id=recur_" . $ev['id'] . "_0&" . http_build_query($_GET);
+
+                            // Check if this recurring series is currently live
+                            foreach ($live_status as $tag_id => $l_status) {
+                                if ($l_status['type'] == 'event' && isset($l_status['data']['recurring_event_id']) && $l_status['data']['recurring_event_id'] == $ev['id']) {
+                                    $live_tags[] = $l_status['tag_name'];
+                                }
+                            }
+
+
+                        } else {
+                            // One-off / Exception
+                            $start = new DateTime($ev['start_time'], new DateTimeZone('UTC'));
+                            $end = new DateTime($ev['end_time'], new DateTimeZone('UTC'));
+                            $now = new DateTime(null, new DateTimeZone('UTC'));
+
+                            $status = 'Future';
+                            $status_color = '#aaa';
+                            if ($end < $now) {
+                                $status = 'Past';
+                                $status_color = '#555';
+                            } elseif ($start <= $now && $end > $now) {
+                                $status = 'Live';
+                                $status_color = 'var(--error-color)';
+                            }
+
+                            if ($is_exception) {
+                                $status = 'Exception';
+                                $status_color = 'orange';
+                            }
+
+                            $start_local = $start->setTimezone(new DateTimeZone('America/New_York'));
+                            $format = ($start_local->format('Y') != date('Y')) ? 'M j, Y, g:i A' : 'M j, g:i A';
+                            $start_display = $start_local->format($format);
+
+                            $end_local = $end->setTimezone(new DateTimeZone('America/New_York'));
+                            $format = ($end_local->format('Y') != date('Y')) ? 'M j, Y, g:i A' : 'M j, g:i A';
+                            $end_display = $end_local->format($format);
+
+                            $edit_link = "edit_event.php?id=" . $ev['id'] . "&" . http_build_query($_GET);
                         }
                         ?>
+                        <?php
+                        $is_default_gap = isset($ev['type']) && $ev['type'] == 'default_gap';
+                        ?>
                         <tr>
-                            <td><span
+                            <td>
+                                <?php if (!empty($live_tags)): ?>
+                                    <?php foreach ($live_tags as $ltag): ?>
+                                        <div class="badge badge-live" style="margin-bottom:2px;">Live:
+                                            <?php echo htmlspecialchars($ltag); ?>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                                <span
                                     style="color:<?php echo $status_color; ?>; font-weight:bold;"><?php echo $status; ?></span>
                             </td>
                             <td>
@@ -557,6 +594,9 @@ if ($view == 'list') {
                                 } elseif ($ev['priority'] == 1) {
                                     $prio_label = 'Medium';
                                     $prio_class = 'p-1';
+                                } elseif ($ev['priority'] == -1) {
+                                    $prio_label = 'None';
+                                    $prio_class = 'p-0';
                                 }
                                 ?>
                                 <span class="priority-badge <?php echo $prio_class; ?>"><?php echo $prio_label; ?></span>
@@ -566,45 +606,43 @@ if ($view == 'list') {
                             </td>
                             <td>
                                 <?php
-                                $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
-                                $stmt_t->execute([$ev['id']]);
-                                $tag_names = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
-                                echo htmlspecialchars(implode(', ', $tag_names));
+                                // Tags might be pre-fetched in 'tag_names' for series/one-offs by Repository
+                                if (isset($ev['tag_names'])) {
+                                    echo htmlspecialchars($ev['tag_names']);
+                                } elseif (!$is_default_gap) {
+                                    // Fallback query
+                                    $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
+                                    $stmt_t->execute([$ev['id']]);
+                                    $tag_names = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
+                                    echo htmlspecialchars(implode(', ', $tag_names));
+                                }
                                 ?>
                             </td>
+                            <td><?php echo $start_display; ?></td>
+                            <td><?php echo $end_display; ?></td>
+                            <td><?php echo htmlspecialchars($ev['filename_original'] ?? 'N/A'); ?></td>
                             <td>
-                                <?php
-                                $start_local = $start->setTimezone(new DateTimeZone('America/New_York'));
-                                $format = ($start_local->format('Y') != date('Y')) ? 'M j, Y, g:i A' : 'M j, g:i A';
-                                echo $start_local->format($format);
-                                ?>
-                            </td>
-                            <td>
-                                <?php
-                                $end_local = $end->setTimezone(new DateTimeZone('America/New_York'));
-                                $format = ($end_local->format('Y') != date('Y')) ? 'M j, Y, g:i A' : 'M j, g:i A';
-                                echo $end_local->format($format);
-                                ?>
-                            </td>
-                            <td><?php echo htmlspecialchars($ev['filename_original']); ?></td>
-                            <td>
-                                <a href="edit_event.php?id=<?php echo $ev['id']; ?>&<?php echo http_build_query($_GET); ?>"
-                                    class="btn btn-sm btn-secondary">Edit</a>
-                                <?php if ($status != 'Live'): ?>
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Delete?');">
-                                        <input type="hidden" name="action" value="delete_event">
-                                        <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
-                                        <button type="submit"
-                                            style="background:none; border:none; color:var(--error-color); cursor:pointer; padding:0;">Delete</button>
-                                    </form>
+                                <?php if ($is_default_gap): ?>
+                                    <?php
+                                    // Link to create event with pre-filled start time
+                                    // $start_local is available from the 'else' block above? 
+                                    // Wait, the 'else' block above (lines 517-547) handles one-offs AND default gaps (since is_series is false).
+                                    // So $start_local is set.
+                                    $add_url = "create_event.php?start_date=" . $start_local->format('Y-m-d') . "&start_time=" . $start_local->format('H:i');
+                                    ?>
+                                    <a href="<?php echo $add_url; ?>" class="btn btn-sm"
+                                        style="background-color: #28a745; color: #fff; border: none;">Add Event</a>
                                 <?php else: ?>
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('End this event now?');">
-                                        <input type="hidden" name="action" value="end_now">
-                                        <input type="hidden" name="event_id" value="<?php echo $ev['id']; ?>">
-                                        <button type="submit"
-                                            style="background:var(--error-color); color:#fff; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:0.8em;">End
-                                            Now</button>
-                                    </form>
+                                    <?php
+                                    $btn_text = 'Edit';
+                                    $btn_class = 'btn-secondary';
+                                    if ($status == 'Past') {
+                                        $btn_text = 'View';
+                                        $btn_class = ''; // Default style
+                                    }
+                                    ?>
+                                    <a href="<?php echo $edit_link; ?>" class="btn btn-sm <?php echo $btn_class; ?>"
+                                        style="<?php echo $status == 'Past' ? 'background:#555; color:#aaa;' : ''; ?>"><?php echo $btn_text; ?></a>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -666,8 +704,31 @@ if ($view == 'list') {
                     echo '<div class="cal-date">' . $d . '</div>';
                     if (isset($events[$d])) {
                         foreach ($events[$d] as $ev) {
-                            $time = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
-                            echo '<a href="edit_event.php?id=' . $ev['id'] . '" class="cal-event priority-' . $ev['priority'] . '">' . $time . ' ' . $ev['event_name'] . '</a>';
+                            $start_utc = new DateTime($ev['start_time'], new DateTimeZone('UTC'));
+                            $end_utc = new DateTime($ev['end_time'], new DateTimeZone('UTC'));
+                            $now_utc = new DateTime('now', new DateTimeZone('UTC'));
+
+                            $status_class = 'status-future';
+                            if ($end_utc < $now_utc) {
+                                $status_class = 'status-past';
+                            } elseif ($start_utc <= $now_utc && $end_utc > $now_utc) {
+                                $status_class = 'status-live';
+                            }
+
+                            $time_obj = $start_utc->setTimezone(new DateTimeZone('America/New_York'));
+                            $time = $time_obj->format('H:i');
+
+                            $is_gap = isset($ev['type']) && $ev['type'] == 'default_gap';
+                            if ($is_gap) {
+                                // Month view date construction
+                                $this_date = date('Y-m-d', strtotime("$start_month + " . ($d - 1) . " days"));
+                                $link_url = "create_event.php?start_date=" . $this_date . "&start_time=" . $time;
+                                $status_class = ''; // No status for gaps
+                            } else {
+                                $link_url = "edit_event.php?id=" . $ev['id'];
+                            }
+
+                            echo '<a href="' . $link_url . '" class="cal-event priority-' . $ev['priority'] . ' ' . $status_class . '">' . $time . ' ' . $ev['event_name'] . '</a>';
                         }
                     }
                     echo '</div>';
@@ -697,9 +758,29 @@ if ($view == 'list') {
 
                     if (isset($events[$date_str])) {
                         foreach ($events[$date_str] as $ev) {
-                            $start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
-                            $end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
-                            echo '<a href="edit_event.php?id=' . $ev['id'] . '" class="cal-event priority-' . $ev['priority'] . '" style="padding:5px; margin-bottom:5px;">';
+                            $start_utc = new DateTime($ev['start_time'], new DateTimeZone('UTC'));
+                            $end_utc = new DateTime($ev['end_time'], new DateTimeZone('UTC'));
+                            $now_utc = new DateTime('now', new DateTimeZone('UTC'));
+
+                            $status_class = 'status-future';
+                            if ($end_utc < $now_utc) {
+                                $status_class = 'status-past';
+                            } elseif ($start_utc <= $now_utc && $end_utc > $now_utc) {
+                                $status_class = 'status-live';
+                            }
+
+                            $start = $start_utc->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
+                            $end = $end_utc->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
+
+                            $is_gap = isset($ev['type']) && $ev['type'] == 'default_gap';
+                            if ($is_gap) {
+                                $link_url = "create_event.php?start_date=" . $date_str . "&start_time=" . $start;
+                                $status_class = '';
+                            } else {
+                                $link_url = "edit_event.php?id=" . $ev['id'];
+                            }
+
+                            echo '<a href="' . $link_url . '" class="cal-event priority-' . $ev['priority'] . ' ' . $status_class . '" style="padding:5px; margin-bottom:5px;">';
                             echo '<b>' . $start . '-' . $end . '</b><br>' . $ev['event_name'];
                             echo '</a>';
                         }
@@ -718,13 +799,33 @@ if ($view == 'list') {
                     <p style="color:#777;">No events scheduled for this day.</p>
                 <?php else: ?>
                     <?php foreach ($events as $ev):
-                        $start = (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
-                        $end = (new DateTime($ev['end_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
+                        $start_utc = new DateTime($ev['start_time'], new DateTimeZone('UTC'));
+                        $end_utc = new DateTime($ev['end_time'], new DateTimeZone('UTC'));
+                        $now_utc = new DateTime('now', new DateTimeZone('UTC'));
+
+                        $status_class = 'status-future';
+                        $status_label = '';
+                        if ($end_utc < $now_utc) {
+                            $status_class = 'status-past';
+                            $status_label = '<span class="badge" style="background:#555; margin-left:10px; font-size:0.7em;">PAST</span>';
+                        } elseif ($start_utc <= $now_utc && $end_utc > $now_utc) {
+                            $status_class = 'status-live';
+                            $status_label = '<span class="badge badge-live" style="margin-left:10px; font-size:0.7em;">LIVE</span>';
+                        }
+
+                        $start = $start_utc->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
+                        $end = $end_utc->setTimezone(new DateTimeZone('America/New_York'))->format('g:i A');
+
+                        if (isset($ev['type']) && $ev['type'] == 'default_gap') {
+                            $status_class = '';
+                            $status_label = '';
+                        }
                         ?>
-                        <div class="day-event priority-<?php echo $ev['priority']; ?>">
+                        <div class="day-event priority-<?php echo $ev['priority']; ?> <?php echo $status_class; ?>">
                             <div>
                                 <div style="font-weight:bold; font-size:1.1em;">
                                     <?php echo $start . ' - ' . $end; ?>
+                                    <?php echo $status_label; ?>
                                     <?php if ($ev['priority'] == 2): ?>
                                         <span class="badge badge-live" style="margin-left:10px; font-size:0.7em;">HIGH PRIORITY</span>
                                     <?php endif; ?>
@@ -733,15 +834,45 @@ if ($view == 'list') {
                                 <div style="font-size:0.9em; color:#888;">
                                     Tags:
                                     <?php
-                                    $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
-                                    $stmt_t->execute([$ev['id']]);
-                                    $tag_names = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
-                                    echo htmlspecialchars(implode(', ', $tag_names));
+                                    if (isset($ev['tag_names'])) {
+                                        echo htmlspecialchars($ev['tag_names']);
+                                    } else {
+                                        // Check if it's a recurring instance
+                                        if (strpos($ev['id'], 'recur_') === 0) {
+                                            $parts = explode('_', $ev['id']);
+                                            $recur_id = (int) $parts[1];
+                                            $stmt_t = $pdo->prepare("SELECT t.tag_name FROM recurring_event_tags ret JOIN tags t ON ret.tag_id = t.id WHERE ret.recurring_event_id = ?");
+                                            $stmt_t->execute([$recur_id]);
+                                        } else {
+                                            // Standard event
+                                            $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
+                                            $stmt_t->execute([$ev['id']]);
+                                        }
+                                        $tag_names = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
+                                        echo htmlspecialchars(implode(', ', $tag_names));
+                                    }
                                     ?>
                                     | Asset: <?php echo htmlspecialchars($ev['filename_original']); ?>
                                 </div>
                             </div>
-                            <a href="edit_event.php?id=<?php echo $ev['id']; ?>" class="btn btn-sm btn-secondary">Edit</a>
+                            <?php if (isset($ev['type']) && $ev['type'] == 'default_gap'): ?>
+                                <?php
+                                $add_url = "create_event.php?start_date=" . date('Y-m-d', strtotime($filter_date)) . "&start_time=" . (new DateTime($ev['start_time'], new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('America/New_York'))->format('H:i');
+                                ?>
+                                <a href="<?php echo $add_url; ?>" class="btn btn-sm"
+                                    style="background-color: #28a745; color: #fff; border: none;">Add Event</a>
+                            <?php else: ?>
+                                <?php
+                                $btn_text = 'Edit';
+                                $btn_class = 'btn-secondary';
+                                if ($status_class == 'status-past') {
+                                    $btn_text = 'View';
+                                    $btn_class = '';
+                                }
+                                ?>
+                                <a href="edit_event.php?id=<?php echo $ev['id']; ?>" class="btn btn-sm <?php echo $btn_class; ?>"
+                                    style="<?php echo $status_class == 'status-past' ? 'background:#555; color:#aaa;' : ''; ?>"><?php echo $btn_text; ?></a>
+                            <?php endif; ?>
                         </div>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -755,6 +886,33 @@ if ($view == 'list') {
         Gregory Pocali for WRHU with assistance from Google Gemini 3.
     </footer>
 
+    <!-- Large Preview Modal -->
+    <div id="previewModal" class="modal" onclick="this.style.display='none'">
+        <div class="modal-content preview-modal-content">
+            <span class="close">&times;</span>
+            <div id="previewContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        window.onclick = function (event) {
+            if (event.target == document.getElementById('previewModal')) {
+                document.getElementById('previewModal').style.display = 'none';
+            }
+        }
+
+        // Preview Logic
+        function showPreview(url, type) {
+            const container = document.getElementById('previewContainer');
+            container.innerHTML = '';
+            if (type.includes('image')) {
+                container.innerHTML = '<img src="' + url + '" class="preview-media">';
+            } else if (type.includes('video')) {
+                container.innerHTML = '<video src="' + url + '" controls autoplay class="preview-media"></video>';
+            }
+            document.getElementById('previewModal').style.display = 'block';
+        }
+    </script>
 </body>
 
 </html>

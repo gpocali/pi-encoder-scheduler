@@ -1,6 +1,7 @@
 <?php
 require_once 'auth.php';
-require_role(['admin', 'user']);
+require_once 'auth.php';
+// require_role(['admin', 'user']); // Allow all authenticated users
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -205,6 +206,7 @@ require_role(['admin', 'user']);
             <!-- Time Selection Controls -->
             <div class="controls-container">
                 <button class="time-btn" onclick="setPeriod('-1h')">1 Hour</button>
+                <button class="time-btn" onclick="setPeriod('-3h')">3 Hours</button>
                 <button class="time-btn active" onclick="setPeriod('-24h')">24 Hours</button>
                 <button class="time-btn" onclick="setPeriod('-1week')">1 Week</button>
                 <button class="time-btn" onclick="setPeriod('-3month')">3 Months</button>
@@ -275,11 +277,11 @@ require_role(['admin', 'user']);
                         // Update Text
                         document.getElementById('stat-Network_Total').innerText = data.grand_total.toLocaleString();
 
-                        // Update Peak
-                        if (!sessionPeaks['Network_Total'] || data.grand_total > sessionPeaks['Network_Total']) {
-                            sessionPeaks['Network_Total'] = data.grand_total;
-                        }
-                        document.getElementById('peak-Network_Total').innerText = sessionPeaks['Network_Total'].toLocaleString();
+                        // Update Peak - DEPRECATED (Now calculated from graph)
+                        // if (!sessionPeaks['Network_Total'] || data.grand_total > sessionPeaks['Network_Total']) {
+                        //     sessionPeaks['Network_Total'] = data.grand_total;
+                        // }
+                        // document.getElementById('peak-Network_Total').innerText = sessionPeaks['Network_Total'].toLocaleString();
 
                         // Update Graph
                         updateGraph('Network_Total', currentPeriod, forceGraphRefresh);
@@ -327,11 +329,11 @@ require_role(['admin', 'user']);
                         document.getElementById(`m-${key}`).innerText = stats.med || 0;
                         document.getElementById(`l-${key}`).innerText = stats.low || 0;
 
-                        // 3. Update Session Peak
-                        if (!sessionPeaks[key] || total > sessionPeaks[key]) {
-                            sessionPeaks[key] = total;
-                        }
-                        document.getElementById(`peak-${key}`).innerText = sessionPeaks[key].toLocaleString();
+                        // 3. Update Session Peak - DEPRECATED (Now calculated from graph)
+                        // if (!sessionPeaks[key] || total > sessionPeaks[key]) {
+                        //     sessionPeaks[key] = total;
+                        // }
+                        // document.getElementById(`peak-${key}`).innerText = sessionPeaks[key].toLocaleString();
 
                         // 4. Update Graph
                         updateGraph(key, currentPeriod, forceGraphRefresh);
@@ -377,11 +379,54 @@ require_role(['admin', 'user']);
                     const ctx = document.getElementById(`chart-${key}`);
                     if (!ctx) return;
 
+                    // Calculate Peak from Graph Data
+                    let graphPeak = 0;
+                    const isStacked = (key === 'Network_Total');
+
+                    if (data.datasets && data.datasets.length > 0) {
+                        // Check for "Total Peak" dataset first
+                        const totalPeakIndex = data.datasets.findIndex(ds => ds.label === 'Total Peak');
+
+                        if (totalPeakIndex !== -1) {
+                            // Use Total Peak for the number
+                            const totalPeakData = data.datasets[totalPeakIndex].data;
+                            for (const val of totalPeakData) {
+                                if (val > graphPeak) graphPeak = val;
+                            }
+                            // Remove it from datasets so it doesn't show on graph
+                            data.datasets.splice(totalPeakIndex, 1);
+                        } else {
+                            // Fallback logic
+                            if (isStacked) {
+                                // For stacked, we need to sum up all datasets at each point
+                                const length = data.datasets[0].data.length;
+                                for (let i = 0; i < length; i++) {
+                                    let sum = 0;
+                                    for (const ds of data.datasets) {
+                                        sum += (ds.data[i] || 0);
+                                    }
+                                    if (sum > graphPeak) graphPeak = sum;
+                                }
+                            } else {
+                                // For individual streams
+                                for (const ds of data.datasets) {
+                                    for (const val of ds.data) {
+                                        if (val > graphPeak) graphPeak = val;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Update Peak UI
+                    const peakEl = document.getElementById(`peak-${key}`);
+                    if (peakEl) {
+                        peakEl.innerText = Math.ceil(graphPeak).toLocaleString();
+                    }
+
                     if (charts[key]) {
                         charts[key].destroy();
                     }
-
-                    const isStacked = (key === 'Network_Total');
 
                     const datasets = data.datasets.map((ds, index) => {
                         const colors = ['#4db8ff', '#ff5555', '#4caf50', '#ffeb3b', '#9c27b0'];
@@ -402,7 +447,16 @@ require_role(['admin', 'user']);
                     charts[key] = new Chart(ctx, {
                         type: 'line',
                         data: {
-                            labels: data.labels.map(t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
+                            labels: data.labels.map(t => {
+                                const d = new Date(t);
+                                if (period === '-1h' || period === '-3h') {
+                                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                } else if (period === '-3year') {
+                                    return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                } else {
+                                    return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                }
+                            }),
                             datasets: datasets
                         },
                         options: {

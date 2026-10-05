@@ -10,7 +10,7 @@ $success_message = '';
 
 // Handle Form Submissions
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    
+
     // Create User
     if (isset($_POST['action']) && $_POST['action'] == 'create_user') {
         $username = trim($_POST['username']);
@@ -53,7 +53,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // Delete User
     if (isset($_POST['action']) && $_POST['action'] == 'delete_user') {
-        $user_id = (int)$_POST['user_id'];
+        $user_id = (int) $_POST['user_id'];
         if ($user_id == $_SESSION['user_id']) {
             $errors[] = "You cannot delete yourself.";
         } else {
@@ -64,7 +64,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // Reset 2FA
     if (isset($_POST['action']) && $_POST['action'] == 'reset_2fa') {
-        $user_id = (int)$_POST['user_id'];
+        $user_id = (int) $_POST['user_id'];
         $stmt = $pdo->prepare("UPDATE users SET totp_secret = NULL WHERE id = ?");
         $stmt->execute([$user_id]);
         $success_message = "2FA reset for user.";
@@ -74,7 +74,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 // Fetch Users
 try {
     $stmt = $pdo->query("SELECT * FROM users ORDER BY username");
-    $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $all_users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Filter out superadmins if current user is not superadmin
+    $current_role = $_SESSION['role'] ?? '';
+    $users = [];
+    foreach ($all_users as $u) {
+        if ($u['role'] === 'superadmin' && $current_role !== 'superadmin') {
+            continue; // Hide superadmin from non-superadmin
+        }
+        $users[] = $u;
+    }
 } catch (Exception $e) {
     $errors[] = "Could not fetch users: " . $e->getMessage();
     $users = [];
@@ -86,6 +96,7 @@ $tags = $pdo->query("SELECT * FROM tags ORDER BY tag_name")->fetchAll(PDO::FETCH
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <title>Manage Users - WRHU Encoder Scheduler</title>
@@ -111,6 +122,7 @@ $tags = $pdo->query("SELECT * FROM tags ORDER BY tag_name")->fetchAll(PDO::FETCH
         }
     </script>
 </head>
+
 <body>
 
     <?php include 'navbar.php'; ?>
@@ -120,10 +132,11 @@ $tags = $pdo->query("SELECT * FROM tags ORDER BY tag_name")->fetchAll(PDO::FETCH
 
         <?php if (!empty($errors)): ?>
             <div class="message error">
-                <ul><?php foreach ($errors as $e) echo "<li>$e</li>"; ?></ul>
+                <ul><?php foreach ($errors as $e)
+                    echo "<li>$e</li>"; ?></ul>
             </div>
         <?php endif; ?>
-        
+
         <?php if ($success_message): ?>
             <div class="message success"><?php echo $success_message; ?></div>
         <?php endif; ?>
@@ -149,21 +162,26 @@ $tags = $pdo->query("SELECT * FROM tags ORDER BY tag_name")->fetchAll(PDO::FETCH
                         <option value="user">Full User (Can create events for all tags)</option>
                         <option value="tag_editor">Tag Editor (Restricted to specific tags)</option>
                         <option value="admin">Admin (Full Access)</option>
+                        <?php if (($_SESSION['role'] ?? '') === 'superadmin'): ?>
+                            <option value="superadmin">Superadmin (Hidden, Full Access + User Mgmt)</option>
+                        <?php endif; ?>
                     </select>
                 </div>
-                
+
                 <div class="form-group" id="tag-selection" style="display:none;">
                     <label>Assign Tags (Hold Ctrl to select multiple)</label>
                     <select name="assigned_tags[]" multiple style="height: 100px;">
                         <?php foreach ($tags as $tag): ?>
-                            <option value="<?php echo $tag['id']; ?>"><?php echo htmlspecialchars($tag['tag_name']); ?></option>
+                            <option value="<?php echo $tag['id']; ?>"><?php echo htmlspecialchars($tag['tag_name']); ?>
+                            </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
 
                 <div class="form-group">
                     <label style="display: flex; align-items: center; gap: 10px;">
-                        <input type="checkbox" name="can_change_password" style="width:auto;"> User can change their own password
+                        <input type="checkbox" name="can_change_password" style="width:auto;"> User can change their own
+                        password
                     </label>
                 </div>
 
@@ -183,12 +201,13 @@ $tags = $pdo->query("SELECT * FROM tags ORDER BY tag_name")->fetchAll(PDO::FETCH
             </thead>
             <tbody>
                 <?php foreach ($users as $user): ?>
-                <tr>
-                    <td><?php echo htmlspecialchars($user['username']); ?></td>
-                    <td><?php echo ucfirst(str_replace('_', ' ', $user['role'])); ?></td>
-                    <td>
-                        <?php if ($user['can_change_password']) echo '<span class="tag-badge">Change PW</span>'; ?>
-                        <?php 
+                    <tr>
+                        <td><?php echo htmlspecialchars($user['username']); ?></td>
+                        <td><?php echo ucfirst(str_replace('_', ' ', $user['role'])); ?></td>
+                        <td>
+                            <?php if ($user['can_change_password'])
+                                echo '<span class="tag-badge">Change PW</span>'; ?>
+                            <?php
                             if ($user['role'] == 'tag_editor') {
                                 // Fetch assigned tags
                                 $stmt = $pdo->prepare("SELECT t.tag_name FROM tags t JOIN user_tags ut ON t.id = ut.tag_id WHERE ut.user_id = ?");
@@ -196,32 +215,37 @@ $tags = $pdo->query("SELECT * FROM tags ORDER BY tag_name")->fetchAll(PDO::FETCH
                                 $user_tags = $stmt->fetchAll(PDO::FETCH_COLUMN);
                                 echo "<br><small>Tags: " . implode(", ", $user_tags) . "</small>";
                             }
-                        ?>
-                    </td>
-                    <td>
-                        <a href="edit_user.php?id=<?php echo $user['id']; ?>" class="btn btn-sm btn-secondary" style="display:inline-block; width:auto; padding: 0.5em 1em; margin-right:5px; text-align:center;">Edit</a>
-                        
-                        <?php if ($user['id'] != $_SESSION['user_id']): ?>
-                            <?php if ($user['totp_secret']): ?>
-                                <form method="POST" onsubmit="return confirm('Reset 2FA for this user?');" style="display:inline;">
-                                    <input type="hidden" name="action" value="reset_2fa">
-                                    <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
-                                    <button type="submit" class="btn btn-sm" style="background:#ff9800; color:#000; margin-left:5px;">Reset 2FA</button>
-                                </form>
+                            ?>
+                        </td>
+                        <td>
+                            <a href="edit_user.php?id=<?php echo $user['id']; ?>" class="btn btn-sm btn-secondary"
+                                style="display:inline-block; width:auto; padding: 0.5em 1em; margin-right:5px; text-align:center;">Edit</a>
+
+                            <?php if ($user['id'] != $_SESSION['user_id']): ?>
+                                <?php if ($user['totp_secret']): ?>
+                                    <form method="POST" onsubmit="return confirm('Reset 2FA for this user?');"
+                                        style="display:inline;">
+                                        <input type="hidden" name="action" value="reset_2fa">
+                                        <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
+                                        <button type="submit" class="btn btn-sm"
+                                            style="background:#ff9800; color:#000; margin-left:5px;">Reset 2FA</button>
+                                    </form>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span style="color:#777;">(You)</span>
                             <?php endif; ?>
-                        <?php else: ?>
-                            <span style="color:#777;">(You)</span>
-                        <?php endif; ?>
-                    </td>
-                </tr>
+                        </td>
+                    </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
     </div>
 
     <footer>
-        &copy;<?php echo date("Y") > 2025 ? "2025-" . date("Y") : "2025"; ?> WRHU Radio Hofstra University. Written by Gregory Pocali for WRHU with assistance from Google Gemini 3.
+        &copy;<?php echo date("Y") > 2025 ? "2025-" . date("Y") : "2025"; ?> WRHU Radio Hofstra University. Written by
+        Gregory Pocali for WRHU with assistance from Google Gemini 3.
     </footer>
 
 </body>
+
 </html>

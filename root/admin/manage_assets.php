@@ -21,8 +21,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $asset = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($asset) {
+            // Check if default asset
+            if (!empty($asset['default_for_tags'])) {
+                $errors[] = "Cannot delete asset: It is set as a default asset for tags: " . htmlspecialchars($asset['default_for_tags']);
+            }
             // Check permissions
-            if ($is_admin || $asset['uploaded_by'] == $user_id) {
+            elseif ($is_admin || $asset['uploaded_by'] == $user_id) {
                 // Delete file
                 $file_path = '/uploads/' . $asset['filename_disk'];
                 if (file_exists($file_path)) {
@@ -46,10 +50,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$sql_assets = "SELECT a.*, u.username, at.tag_id 
+$sql_assets = "SELECT a.*, u.username, at.tag_id, 
+               GROUP_CONCAT(DISTINCT t_def.tag_name SEPARATOR ', ') as default_for_tags
                FROM assets a 
                LEFT JOIN users u ON a.uploaded_by = u.id 
                LEFT JOIN asset_tags at ON a.id = at.asset_id 
+               LEFT JOIN default_assets da ON a.id = da.asset_id
+               LEFT JOIN tags t_def ON da.tag_id = t_def.id
                WHERE 1=1";
 $params = [];
 
@@ -88,6 +95,44 @@ $sql_assets .= " GROUP BY a.id ORDER BY a.created_at DESC";
 $stmt_assets = $pdo->prepare($sql_assets);
 $stmt_assets->execute($params);
 $assets = $stmt_assets->fetchAll(PDO::FETCH_ASSOC);
+
+// Fetch future/active events for all assets
+$asset_ids = array_column($assets, 'id');
+$asset_events = [];
+
+if (!empty($asset_ids)) {
+    $in_ids = implode(',', array_fill(0, count($asset_ids), '?'));
+
+    // 1. Single Events (future or active)
+    // "occur now or in the future" => end_time >= NOW()
+    $sql_single = "SELECT asset_id, event_name, start_time 
+                   FROM events 
+                   WHERE asset_id IN ($in_ids) 
+                   AND end_time >= NOW()";
+
+    // 2. Recurring Events (active series)
+    // "occur now or in the future" => end_date IS NULL OR end_date >= CURDATE()
+    $sql_recur = "SELECT asset_id, event_name, start_time 
+                  FROM recurring_events 
+                  WHERE asset_id IN ($in_ids) 
+                  AND (end_date IS NULL OR end_date >= CURDATE())";
+
+    $stmt_single = $pdo->prepare($sql_single);
+    $stmt_single->execute($asset_ids);
+    $single_events = $stmt_single->fetchAll(PDO::FETCH_ASSOC);
+
+    $stmt_recur = $pdo->prepare($sql_recur);
+    $stmt_recur->execute($asset_ids);
+    $recur_events = $stmt_recur->fetchAll(PDO::FETCH_ASSOC);
+
+    // Group by asset_id
+    foreach ($single_events as $ev) {
+        $asset_events[$ev['asset_id']][] = $ev['event_name'] . " (Single)";
+    }
+    foreach ($recur_events as $ev) {
+        $asset_events[$ev['asset_id']][] = $ev['event_name'] . " (Recurring)";
+    }
+}
 
 // Fetch Tags for Filter/Upload
 if ($is_admin || $is_full_user) {
@@ -226,9 +271,37 @@ if (!function_exists('formatBytes')) {
             </div>
         </div>
 
+        <!-- Search Bar -->
+        <div style="margin-bottom: 20px;">
+            <input type="text" id="assetSearch" placeholder="Search assets by name, tag, or assigned event..."
+                style="width: 100%; padding: 10px; font-size: 1em; background: #333; color: #fff; border: 1px solid #444; border-radius: 4px;">
+        </div>
+
+
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
-            <?php foreach ($assets as $asset): ?>
-                <div class="card" style="padding: 1em; margin-bottom: 0;">
+            <?php foreach ($assets as $asset): 
+                $my_events = $asset_events[$asset['id']] ?? [];
+                $has_future_events = !empty($my_events);
+                $is_default = !empty($asset['default_for_tags']);
+                $events_list_str = implode(', ', $my_events);
+                
+                $is_protected = $has_future_events || $is_default;
+                $protection_reasons = [];
+                if ($is_default) $protection_reasons[] = "Default Asset (" . $asset['default_for_tags'] . ")";
+                if ($has_future_events) $protection_reasons[] = "Assigned to " . $events_list_str;
+                $protection_tooltip = "Cannot delete: " . implode('; ', $protection_reasons);
+
+                // Fetch tags for this asset (moved up for data attribute)
+                $stmt_at = $pdo->prepare("SELECT t.tag_name FROM asset_tags at JOIN tags t ON at.asset_id = ? AND at.tag_id = t.id");
+                $stmt_at->execute([$asset['id']]);
+                $at_names = $stmt_at->fetchAll(PDO::FETCH_COLUMN);
+                $tag_display = empty($at_names) ? 'None' : implode(', ', $at_names);
+                ?>
+                <div class="card asset-card"
+                    data-name="<?php echo htmlspecialchars(strtolower($asset['display_name'] ?? $asset['filename_original'])); ?>"
+                    data-tags="<?php echo htmlspecialchars(strtolower($tag_display)); ?>"
+                    data-events="<?php echo htmlspecialchars(strtolower($events_list_str)); ?>"
+                    style="padding: 1em; margin-bottom: 0; display: flex; flex-direction: column; height: 100%; box-sizing: border-box;">
                     <?php
                     $file_url = 'serve_asset.php?id=' . $asset['id'];
                     $is_image = strpos($asset['mime_type'], 'image') !== false;
@@ -258,31 +331,36 @@ if (!function_exists('formatBytes')) {
 
                     <div style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">
                         Size: <?php echo formatBytes($asset['size_bytes']); ?><br>
-                        <?php
-                        // Fetch tags for this asset
-                        $stmt_at = $pdo->prepare("SELECT t.tag_name FROM asset_tags at JOIN tags t ON at.asset_id = ? AND at.tag_id = t.id");
-                        $stmt_at->execute([$asset['id']]);
-                        $at_names = $stmt_at->fetchAll(PDO::FETCH_COLUMN);
-                        $tag_display = empty($at_names) ? 'None' : implode(', ', $at_names);
-                        ?>
                         Tags: <?php echo htmlspecialchars($tag_display); ?><br>
+                        <?php if ($has_future_events): ?>
+                            <div style="color: var(--warning-color); font-size: 0.9em; margin-top: 4px; line-height: 1.2;">
+                                <strong>In Use:</strong> <?php echo htmlspecialchars($events_list_str); ?>
+                            </div>
+                        <?php endif; ?>
+                        <?php if ($is_default): ?>
+                            <div style="color: var(--secondary-color); font-size: 0.9em; margin-top: 4px; line-height: 1.2;">
+                                <strong>Default Asset</strong>
+                            </div>
+                        <?php endif; ?>
                         By: <?php echo htmlspecialchars($asset['username'] ?? 'System'); ?><br>
                         Date: <?php echo date('M j, Y', strtotime($asset['created_at'])); ?>
                     </div>
 
-                    <div style="display:flex; gap:10px;">
+                    <div style="display:flex; gap:10px; margin-top: auto;">
                         <a href="edit_asset.php?id=<?php echo $asset['id']; ?>" class="btn btn-sm btn-secondary"
                             style="flex:1; text-align:center;">Edit</a>
-                        <?php if (($is_admin || $asset['uploaded_by'] == $_SESSION['user_id']) && empty($asset['default_for_tags'])): ?>
-                            <form method="POST" onsubmit="return confirm('Delete this asset? This cannot be undone.');"
-                                style="flex:1;">
+
+                        <?php if ($is_protected): ?>
+                            <button class="btn btn-sm btn-danger" disabled
+                                title="<?php echo htmlspecialchars($protection_tooltip); ?>"
+                                style="flex:1; opacity: 0.5; cursor: not-allowed;">Delete</button>
+                        <?php else: ?>
+                            <form method="POST" style="flex:1;"
+                                onsubmit="return confirm('Are you sure you want to delete this asset?');">
                                 <input type="hidden" name="action" value="delete_asset">
                                 <input type="hidden" name="asset_id" value="<?php echo $asset['id']; ?>">
-                                <button type="submit" class="btn-delete btn-sm" style="width: 100%;">Delete</button>
+                                <button type="submit" class="btn btn-sm btn-danger" style="width:100%;">Delete</button>
                             </form>
-                        <?php else: ?>
-                            <button class="btn-delete btn-sm" style="flex:1; opacity:0.5; cursor:not-allowed;"
-                                disabled>Delete</button>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -312,14 +390,56 @@ if (!function_exists('formatBytes')) {
         // Preview Logic
         function showPreview(url, type) {
             const container = document.getElementById('previewContainer');
-            container.innerHTML = '';
-            if (type.includes('image')) {
-                container.innerHTML = '<img src="' + url + '" class="preview-media">';
-            } else if (type.includes('video')) {
-                container.innerHTML = '<video src="' + url + '" controls autoplay class="preview-media"></video>';
-            }
+            container.innerHTML = '<div id="previewLoader" style="color: #fff; font-size: 1.2em; padding: 20px;">Loading preview...</div>';
             document.getElementById('previewModal').style.display = 'block';
+
+            let mediaElement;
+            if (type.includes('image')) {
+                mediaElement = new Image();
+                mediaElement.src = url;
+                mediaElement.className = 'preview-media';
+                mediaElement.style.display = 'none';
+                mediaElement.onload = function () {
+                    const loader = document.getElementById('previewLoader');
+                    if (loader) loader.remove();
+                    this.style.display = 'block';
+                };
+            } else if (type.includes('video')) {
+                mediaElement = document.createElement('video');
+                mediaElement.src = url;
+                mediaElement.controls = true;
+                mediaElement.autoplay = true;
+                mediaElement.className = 'preview-media';
+                mediaElement.style.display = 'none';
+                mediaElement.onloadeddata = function () {
+                    const loader = document.getElementById('previewLoader');
+                    if (loader) loader.remove();
+                    this.style.display = 'block';
+                };
+            }
+
+            if (mediaElement) {
+                container.appendChild(mediaElement);
+            }
         }
+
+        // Search Logic
+        document.getElementById('assetSearch').addEventListener('keyup', function () {
+            const query = this.value.toLowerCase();
+            const cards = document.querySelectorAll('.asset-card');
+
+            cards.forEach(card => {
+                const name = card.getAttribute('data-name');
+                const tags = card.getAttribute('data-tags');
+                const events = card.getAttribute('data-events');
+
+                if (name.includes(query) || tags.includes(query) || events.includes(query)) {
+                    card.style.display = 'flex';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        });
     </script>
 </body>
 

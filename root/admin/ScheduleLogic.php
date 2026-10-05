@@ -111,4 +111,95 @@ class ScheduleLogic
 
         return $result;
     }
+    /**
+     * Deduplicates segments that are identical across multiple tags.
+     * Used for display when viewing "All Tags".
+     */
+    public static function deduplicateSegments(array $segments)
+    {
+        $unique = [];
+        foreach ($segments as $ev) {
+            // Create a unique key based on ID and Time
+            // For recurring instances, 'id' is already unique per instance (recur_ID_TIME)
+            // For one-offs, 'id' is the DB ID.
+            $key = $ev['id'] . '_' . $ev['start_time'] . '_' . $ev['end_time'];
+
+            if (!isset($unique[$key])) {
+                $unique[$key] = $ev;
+            }
+        }
+        return array_values($unique);
+    }
+
+    /**
+     * Fills gaps in the schedule with "Default - Unscheduled" events.
+     * 
+     * @param array $events List of events for the day.
+     * @param string $dateStr The date (Y-m-d) to fill gaps for.
+     * @return array The list of events including default gaps.
+     */
+    public static function fillGaps(array $events, string $dateStr)
+    {
+        $tz = new DateTimeZone('America/New_York');
+        $dayStart = new DateTime("$dateStr 00:00:00", $tz);
+        $dayEnd = new DateTime("$dateStr 23:59:59", $tz);
+        // Actually, better to use 00:00:00 next day for calculation, then format.
+        $dayEndCalc = clone $dayStart;
+        $dayEndCalc->modify('+1 day');
+
+        // Sort by start time
+        usort($events, function ($a, $b) {
+            return strcmp($a['start_time'], $b['start_time']);
+        });
+
+        $filled = [];
+        $cursor = clone $dayStart;
+        $cursor->setTimezone(new DateTimeZone('UTC')); // Work in UTC for comparison with events
+
+        foreach ($events as $ev) {
+            // Let's assume input is UTC strings.
+            $evStart = new DateTime($ev['start_time'], new DateTimeZone('UTC'));
+            $evEnd = new DateTime($ev['end_time'], new DateTimeZone('UTC'));
+
+            // Gap?
+            if ($evStart > $cursor) {
+                // Create Default Event
+                $filled[] = [
+                    'id' => 'default_' . $cursor->getTimestamp(),
+                    'event_name' => 'Default - Unscheduled',
+                    'start_time' => $cursor->format('Y-m-d H:i:s'), // UTC
+                    'end_time' => $evStart->format('Y-m-d H:i:s'),   // UTC
+                    'priority' => -1, // Lowest
+                    'type' => 'default_gap',
+                    'filename_original' => 'Auto DJ'
+                ];
+            }
+
+            $filled[] = $ev;
+
+            // Move cursor to max(cursor, evEnd)
+            if ($evEnd > $cursor) {
+                $cursor = $evEnd;
+            }
+        }
+
+        // Final gap
+        // We need to compare cursor (UTC) with dayEnd (Local converted to UTC)
+        $dayEndUtc = clone $dayEndCalc;
+        $dayEndUtc->setTimezone(new DateTimeZone('UTC'));
+
+        if ($cursor < $dayEndUtc) {
+            $filled[] = [
+                'id' => 'default_' . $cursor->getTimestamp(),
+                'event_name' => 'Default - Unscheduled',
+                'start_time' => $cursor->format('Y-m-d H:i:s'),
+                'end_time' => $dayEndUtc->format('Y-m-d H:i:s'),
+                'priority' => -1,
+                'type' => 'default_gap',
+                'filename_original' => 'Auto DJ'
+            ];
+        }
+
+        return $filled;
+    }
 }

@@ -18,6 +18,10 @@ $nodes = [
         'host' => '100.100.63.43',
         'map' => ['stream1' => 'WRHU', 'stream2' => 'HAWC', 'stream3' => 'SPEV']
     ],
+    'WRHU-Server02' => [
+        'host' => '100.99.102.119',
+        'map' => ['stream1' => 'WRHU', 'stream2' => 'HAWC', 'stream3' => 'SPEV']
+    ],
     'WRHU-Server03' => [
         'host' => '100.76.127.104',
         'map' => ['stream1' => 'WRHU', 'stream2' => 'HAWC', 'stream3' => 'SPEV']
@@ -102,6 +106,7 @@ while (true) {
 
             // Prepare node array in JSON
             $live_data['nodes'][$node_name] = [];
+			$nodeTotal = 0;
 
             foreach ($lines as $line) {
                 // Parse: /path/stream1_total:50
@@ -127,6 +132,8 @@ while (true) {
                             $live_data['totals'][$k]['total'] += $val;
                             $live_data['nodes'][$node_name][$k]['total'] += $val;
                             $live_data['grand_total'] += $val;
+							$nodeTotal += $val;
+							echo $val."\n";
 
                             // Queue RRD Updates
                             $rrd_updates['nodes']["{$k}_{$node_name}"] = $val;
@@ -142,7 +149,10 @@ while (true) {
                     }
                 }
             }
-        }
+			echo $node_name.": ".$nodeTotal."\n";
+        } else {
+			echo "No output from ".$node_name.".\n";
+		}
     }
 
     // --- B. SAVE JSON (Instant Live View) ---

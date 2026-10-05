@@ -2,7 +2,7 @@
 require_once 'auth.php';
 require_once '../db_connect.php';
 
-require_role('admin');
+require_role(['admin', 'user']);
 
 $errors = [];
 $success_message = '';
@@ -172,7 +172,8 @@ try {
                         <div
                             style="display:flex; align-items:center; gap:15px; background:#2a2a2a; padding:10px; border-radius:4px; border:1px solid #444;">
                             <div style="width:150px; font-weight:bold; font-size:1.1em;">
-                                <?php echo htmlspecialchars($tag['tag_name']); ?></div>
+                                <?php echo htmlspecialchars($tag['tag_name']); ?>
+                            </div>
 
                             <div id="preview_<?php echo $tag['id']; ?>" style="width:120px;">
                                 <?php if ($current_asset): ?>
