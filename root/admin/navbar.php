@@ -38,6 +38,13 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
                         <i class="bi bi-calendar-plus"></i> Create Event
                     </a>
                 </li>
+                <?php if ($user_role === 'admin'): ?>
+                <li>
+                    <a href="import_export.php" class="<?php echo $current_page == 'import_export.php' ? 'active' : ''; ?>">
+                        <i class="bi bi-import-export"></i> Import / Export
+                    </a>
+                </li>
+                <?php endif; ?>
             </ul>
         </div>
         <div class="navbar-user">

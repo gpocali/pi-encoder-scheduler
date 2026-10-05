@@ -20,7 +20,8 @@ class EventRepository
         $oneOffs = $this->fetchOneOffEvents($startDate, $endDate, $tagId, false);
 
         // 2. Fetch Recurring Series that overlap with the range (Expanded by Tag)
-        $series = $this->fetchRecurringSeries($startDate, $endDate, $tagId, false);
+        // Use groupByEvent=true to include tag_names and tag_ids
+        $series = $this->fetchRecurringSeries($startDate, $endDate, $tagId, true);
 
         // 3. Expand Series into Instances
         $instances = [];
