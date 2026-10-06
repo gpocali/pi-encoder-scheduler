@@ -92,6 +92,20 @@ if ($stream === 'Network_Total') {
     }
 } else {
     $rrd_file = "$storage_dir/{$stream}_{$node}.rrd";
+    if (!file_exists($rrd_file)) {
+        // Try case-insensitive or prefix match in case stream name has different casing
+        $all_rrds = glob("$storage_dir/*_{$node}.rrd");
+        if ($all_rrds) {
+            foreach ($all_rrds as $candidate) {
+                $base = basename($candidate, "_{$node}.rrd");
+                if (strcasecmp($base, $stream) === 0 || stripos($stream, $base) !== false || stripos($base, $stream) !== false) {
+                    $stream = $base;
+                    $rrd_file = $candidate;
+                    break;
+                }
+            }
+        }
+    }
     if (file_exists($rrd_file)) {
         $cmd_parts[] = "DEF:avg=$rrd_file:listeners:AVERAGE";
         $cmd_parts[] = "DEF:max=$rrd_file:listeners:MAX";
@@ -102,10 +116,28 @@ if ($stream === 'Network_Total') {
     }
 }
 
+// Compute pure MAX listeners across the timeframe with zero averaging
+$max_listeners = null;
+if ($is_custom_range && !empty($rrd_file) && file_exists($rrd_file)) {
+    $dev_null = (DIRECTORY_SEPARATOR === '\\') ? 'NUL' : '/dev/null';
+    $cmd_max = "rrdtool graph $dev_null --start $start_ts --end $end_ts DEF:max_val=$rrd_file:listeners:MAX VDEF:vmax=max_val,MAXIMUM PRINT:vmax:\"%lf\"";
+    exec($cmd_max, $max_out, $max_ret);
+    if ($max_ret === 0 && !empty($max_out)) {
+        foreach ($max_out as $line) {
+            $line = trim($line);
+            if (is_numeric($line) && !is_nan((float) $line)) {
+                $max_listeners = (float) $line;
+                break;
+            }
+        }
+    }
+}
+
 if (empty($cmd_parts)) {
     echo json_encode([
         'labels' => [],
         'datasets' => [],
+        'max_listeners' => $max_listeners,
         'available_streams' => $available_streams
     ]);
     exit;
@@ -124,6 +156,7 @@ exec($cmd, $output, $return_var);
 if ($return_var !== 0) {
     echo json_encode([
         'error' => 'RRDTool failed',
+        'max_listeners' => $max_listeners,
         'available_streams' => $available_streams
     ]);
     exit;
@@ -206,6 +239,7 @@ if (preg_match_all('/<row>(.*?)<\/row>/si', $xml_string, $row_matches)) {
 echo json_encode([
     'labels' => $labels,
     'datasets' => $datasets,
+    'max_listeners' => $max_listeners,
     'available_streams' => $available_streams
 ]);
 ?>

@@ -31,6 +31,53 @@ if ($is_admin || has_role('user')) {
 $all_tags_stmt = $pdo->query("SELECT id, tag_name FROM tags");
 $tag_names_by_id = $all_tags_stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
+function getEventTagNames($ev, $pdo, $tag_names_by_id)
+{
+    static $tags_cache = [];
+    $ev_id = $ev['id'] ?? null;
+
+    if (!$ev_id) {
+        if (!empty($ev['tag_id']) && isset($tag_names_by_id[$ev['tag_id']])) {
+            return [$tag_names_by_id[$ev['tag_id']]];
+        }
+        return [];
+    }
+
+    if (isset($tags_cache[$ev_id])) {
+        return $tags_cache[$ev_id];
+    }
+
+    // Check if it's a recurring instance: recur_{series_id}_{timestamp}
+    if (is_string($ev_id) && strpos($ev_id, 'recur_') === 0) {
+        $parts = explode('_', $ev_id);
+        $recur_id = (int) $parts[1];
+        $stmt = $pdo->prepare("SELECT t.tag_name FROM recurring_event_tags ret JOIN tags t ON ret.tag_id = t.id WHERE ret.recurring_event_id = ? ORDER BY t.tag_name");
+        $stmt->execute([$recur_id]);
+        $names = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        if (empty($names) && !empty($ev['tag_id']) && isset($tag_names_by_id[$ev['tag_id']])) {
+            $names = [$tag_names_by_id[$ev['tag_id']]];
+        }
+        $tags_cache[$ev_id] = $names;
+        return $names;
+    }
+
+    // Standard one-off event (or exception)
+    $stmt = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ? ORDER BY t.tag_name");
+    $stmt->execute([(int) $ev_id]);
+    $names = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    if (empty($names) && !empty($ev['tag_id']) && isset($tag_names_by_id[$ev['tag_id']])) {
+        $names = [$tag_names_by_id[$ev['tag_id']]];
+    }
+
+    if (empty($names) && !empty($ev['tag_names'])) {
+        $names = array_map('trim', explode(',', $ev['tag_names']));
+    }
+
+    $tags_cache[$ev_id] = $names;
+    return $names;
+}
+
 // Handle Actions (End Now, Delete)
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (isset($_POST['action']) && $_POST['action'] == 'end_now') {
@@ -612,12 +659,9 @@ if ($view == 'list') {
                             </td>
                             <td>
                                 <?php
-                                $ev_tag_names = '';
-                                if (isset($ev['tag_names'])) {
-                                    $ev_tag_names = $ev['tag_names'];
-                                } elseif (!empty($ev['tag_id']) && isset($tag_names_by_id[$ev['tag_id']])) {
-                                    $ev_tag_names = $tag_names_by_id[$ev['tag_id']];
-                                }
+                                $ev_tags_array = getEventTagNames($ev, $pdo, $tag_names_by_id);
+                                $ev_tag_names = implode(', ', $ev_tags_array);
+                                $ev_tags_data = implode(',', $ev_tags_array);
                                 ?>
                                 <?php if ($status == 'Past' && !$is_default_gap && isset($start) && isset($end)): ?>
                                     <span class="event-name-stats-clickable" title="Click to view listener statistics" style="cursor:pointer; text-decoration:underline; font-weight:600; color:var(--accent-color);"
@@ -627,7 +671,8 @@ if ($view == 'list') {
                                         data-end-ts="<?php echo $end->getTimestamp(); ?>"
                                         data-start-display="<?php echo htmlspecialchars($start_display); ?>"
                                         data-end-display="<?php echo htmlspecialchars($end_display); ?>"
-                                        data-tag-names="<?php echo htmlspecialchars($ev_tag_names); ?>">
+                                        data-tags="<?php echo htmlspecialchars($ev_tags_data, ENT_QUOTES); ?>"
+                                        data-tag-names="<?php echo htmlspecialchars($ev_tag_names, ENT_QUOTES); ?>">
                                         <?php echo htmlspecialchars($ev['event_name']); ?> <i class="bi bi-graph-up" style="font-size:0.8em;"></i>
                                     </span>
                                 <?php else: ?>
@@ -764,7 +809,9 @@ if ($view == 'list') {
                                 $end_local = (clone $end_utc)->setTimezone(new DateTimeZone('America/New_York'));
                                 $start_display_str = $start_local->format('D, M j, Y g:i A');
                                 $end_display_str = $end_local->format('g:i A');
-                                $ev_tag_names = $ev['tag_names'] ?? ($tag_names_by_id[$ev['tag_id']] ?? '');
+                                $ev_tags_array = getEventTagNames($ev, $pdo, $tag_names_by_id);
+                                $ev_tag_names = implode(', ', $ev_tags_array);
+                                $ev_tags_data = implode(',', $ev_tags_array);
 
                                 echo '<div class="cal-event priority-' . $ev['priority'] . ' ' . $status_class . '" style="display:flex; justify-content:space-between; align-items:center; gap:4px;">';
                                 echo '<span class="event-name-stats-clickable" title="Click to view listener statistics" style="cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-grow:1;" ' .
@@ -774,7 +821,8 @@ if ($view == 'list') {
                                     'data-end-ts="' . $end_utc->getTimestamp() . '" ' .
                                     'data-start-display="' . htmlspecialchars($start_display_str) . '" ' .
                                     'data-end-display="' . htmlspecialchars($end_display_str) . '" ' .
-                                    'data-tag-names="' . htmlspecialchars($ev_tag_names) . '">';
+                                    'data-tags="' . htmlspecialchars($ev_tags_data, ENT_QUOTES) . '" ' .
+                                    'data-tag-names="' . htmlspecialchars($ev_tag_names, ENT_QUOTES) . '">';
                                 echo $time . ' <span style="text-decoration:underline;">' . htmlspecialchars($ev['event_name']) . '</span> <i class="bi bi-graph-up" style="font-size:0.75em;"></i>';
                                 echo '</span>';
                                 echo '<a href="' . $link_url . '" title="View event details" style="color:#777; flex-shrink:0; text-decoration:none;"><i class="bi bi-info-circle"></i></a>';
@@ -838,7 +886,9 @@ if ($view == 'list') {
                                 $end_local = (clone $end_utc)->setTimezone(new DateTimeZone('America/New_York'));
                                 $start_display_str = $start_local->format('D, M j, Y g:i A');
                                 $end_display_str = $end_local->format('g:i A');
-                                $ev_tag_names = $ev['tag_names'] ?? ($tag_names_by_id[$ev['tag_id']] ?? '');
+                                $ev_tags_array = getEventTagNames($ev, $pdo, $tag_names_by_id);
+                                $ev_tag_names = implode(', ', $ev_tags_array);
+                                $ev_tags_data = implode(',', $ev_tags_array);
 
                                 echo '<div class="cal-event priority-' . $ev['priority'] . ' ' . $status_class . '" style="padding:5px; margin-bottom:5px;">';
                                 echo '<div style="display:flex; justify-content:space-between; align-items:center;">';
@@ -852,7 +902,8 @@ if ($view == 'list') {
                                     'data-end-ts="' . $end_utc->getTimestamp() . '" ' .
                                     'data-start-display="' . htmlspecialchars($start_display_str) . '" ' .
                                     'data-end-display="' . htmlspecialchars($end_display_str) . '" ' .
-                                    'data-tag-names="' . htmlspecialchars($ev_tag_names) . '">';
+                                    'data-tags="' . htmlspecialchars($ev_tags_data, ENT_QUOTES) . '" ' .
+                                    'data-tag-names="' . htmlspecialchars($ev_tag_names, ENT_QUOTES) . '">';
                                 echo htmlspecialchars($ev['event_name']) . ' <i class="bi bi-graph-up" style="font-size:0.8em;"></i>';
                                 echo '</div>';
                                 echo '</div>';
@@ -915,26 +966,9 @@ if ($view == 'list') {
                                     <?php endif; ?>
                                 </div>
                                 <?php
-                                $ev_tag_names = '';
-                                if (isset($ev['tag_names'])) {
-                                    $ev_tag_names = $ev['tag_names'];
-                                } else {
-                                    if (isset($ev['id']) && strpos($ev['id'], 'recur_') === 0) {
-                                        $parts = explode('_', $ev['id']);
-                                        $recur_id = (int) $parts[1];
-                                        $stmt_t = $pdo->prepare("SELECT t.tag_name FROM recurring_event_tags ret JOIN tags t ON ret.tag_id = t.id WHERE ret.recurring_event_id = ?");
-                                        $stmt_t->execute([$recur_id]);
-                                        $tag_names = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
-                                        $ev_tag_names = implode(', ', $tag_names);
-                                    } elseif (!empty($ev['id'])) {
-                                        $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
-                                        $stmt_t->execute([$ev['id']]);
-                                        $tag_names = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
-                                        $ev_tag_names = implode(', ', $tag_names);
-                                    } elseif (!empty($ev['tag_id']) && isset($tag_names_by_id[$ev['tag_id']])) {
-                                        $ev_tag_names = $tag_names_by_id[$ev['tag_id']];
-                                    }
-                                }
+                                $ev_tags_array = getEventTagNames($ev, $pdo, $tag_names_by_id);
+                                $ev_tag_names = implode(', ', $ev_tags_array);
+                                $ev_tags_data = implode(',', $ev_tags_array);
                                 $start_local = (clone $start_utc)->setTimezone(new DateTimeZone('America/New_York'));
                                 $end_local = (clone $end_utc)->setTimezone(new DateTimeZone('America/New_York'));
                                 $start_display_str = $start_local->format('D, M j, Y g:i A');
@@ -949,7 +983,8 @@ if ($view == 'list') {
                                             data-end-ts="<?php echo $end_utc->getTimestamp(); ?>"
                                             data-start-display="<?php echo htmlspecialchars($start_display_str); ?>"
                                             data-end-display="<?php echo htmlspecialchars($end_display_str); ?>"
-                                            data-tag-names="<?php echo htmlspecialchars($ev_tag_names); ?>">
+                                            data-tags="<?php echo htmlspecialchars($ev_tags_data, ENT_QUOTES); ?>"
+                                            data-tag-names="<?php echo htmlspecialchars($ev_tag_names, ENT_QUOTES); ?>">
                                             <?php echo htmlspecialchars($ev['event_name']); ?> <i class="bi bi-graph-up" style="font-size:0.85em;"></i>
                                         </span>
                                     <?php else: ?>
@@ -1146,6 +1181,17 @@ if ($view == 'list') {
         let currentStatsStream = null;
         let eventStatsChartInstance = null;
 
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>"']/g, function (m) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m];
+            });
+        }
+        function escapeJs(str) {
+            if (!str) return '';
+            return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        }
+
         document.addEventListener('click', function (e) {
             const el = e.target.closest('.event-name-stats-clickable');
             if (el) {
@@ -1158,6 +1204,7 @@ if ($view == 'list') {
                     endTs: parseInt(el.dataset.endTs, 10),
                     startDisplay: el.dataset.startDisplay,
                     endDisplay: el.dataset.endDisplay,
+                    tags: el.dataset.tags || '',
                     tagNames: el.dataset.tagNames || ''
                 });
             }
@@ -1166,9 +1213,16 @@ if ($view == 'list') {
         function openEventStats(eventData) {
             currentStatsEvent = eventData;
 
+            // Extract tags specifically assigned to this event
+            let rawTags = eventData.tags || eventData.tagNames || '';
+            let eventTags = rawTags ? rawTags.split(',').map(s => s.trim()).filter(Boolean) : [];
+            // Remove duplicates
+            eventTags = [...new Set(eventTags)];
+            currentStatsEvent.eventTags = eventTags;
+
             document.getElementById('eventStatsTitle').innerText = eventData.name;
             document.getElementById('eventStatsTime').innerText = eventData.startDisplay + ' – ' + eventData.endDisplay;
-            document.getElementById('eventStatsTags').innerText = eventData.tagNames ? ('Tag(s): ' + eventData.tagNames) : '';
+            document.getElementById('eventStatsTags').innerText = eventTags.length > 0 ? ('Tag(s): ' + eventTags.join(', ')) : '';
 
             const durSec = Math.max(0, eventData.endTs - eventData.startTs);
             const durHrs = Math.floor(durSec / 3600);
@@ -1178,14 +1232,8 @@ if ($view == 'list') {
             if (durMins > 0 || durHrs === 0) durText += durMins + 'm';
             document.getElementById('eventStatsDurationBadge').innerText = 'Duration: ' + durText.trim();
 
-            // Default to tag stream if present, otherwise Network_Total
-            let initialStream = 'Network_Total';
-            if (eventData.tagNames) {
-                const parts = eventData.tagNames.split(',').map(s => s.trim());
-                if (parts.length > 0 && parts[0]) {
-                    initialStream = parts[0];
-                }
-            }
+            // Default stream is the first tag assigned to the event
+            const initialStream = eventTags.length > 0 ? eventTags[0] : '';
             currentStatsStream = initialStream;
 
             document.getElementById('eventStatsModal').style.display = 'block';
@@ -1220,8 +1268,41 @@ if ($view == 'list') {
             document.getElementById('eventStatsMin').innerText = '--';
             document.getElementById('eventStatsPoints').innerText = '--';
 
+            // Show ONLY the tags that were selected for this event
+            const eventTags = currentStatsEvent.eventTags || [];
+            if (eventTags.length === 0) {
+                pillsContainer.innerHTML = '<span style="color:#888; font-size:0.85rem; font-style:italic;">No stream tags assigned</span>';
+                loadingEl.style.display = 'none';
+                emptyEl.innerHTML = '<i class="bi bi-info-circle" style="font-size:2rem; display:block; margin-bottom:8px; opacity:0.5;"></i>No stream tags are associated with this event.';
+                emptyEl.style.display = 'flex';
+                if (eventStatsChartInstance) {
+                    eventStatsChartInstance.destroy();
+                    eventStatsChartInstance = null;
+                }
+                return;
+            }
+
+            // Ensure currentStatsStream is valid within eventTags
+            if (!currentStatsStream || !eventTags.includes(currentStatsStream)) {
+                currentStatsStream = eventTags[0];
+            }
+
+            // Render stream pills strictly for the selected tags of the event
+            let pillsHtml = '';
+            if (eventTags.length === 1) {
+                // If only 1 tag was selected for this event, display it as an active badge
+                pillsHtml = `<button type="button" class="stream-pill active" style="cursor:default;">${escapeHtml(eventTags[0])}</button>`;
+            } else {
+                // Multiple tags were selected: render selector buttons ONLY for those tags
+                eventTags.forEach(t => {
+                    const activeClass = (t === currentStatsStream) ? ' active' : '';
+                    pillsHtml += `<button type="button" class="stream-pill${activeClass}" onclick="loadEventStats('${escapeJs(t)}')">${escapeHtml(t)}</button>`;
+                });
+            }
+            pillsContainer.innerHTML = pillsHtml;
+
             try {
-                const url = `api_graph_data.php?s=${encodeURIComponent(stream)}&n=Global&start=${currentStatsEvent.startTs}&end=${currentStatsEvent.endTs}&nocache=${Date.now()}`;
+                const url = `api_graph_data.php?s=${encodeURIComponent(currentStatsStream)}&n=Global&start=${currentStatsEvent.startTs}&end=${currentStatsEvent.endTs}&nocache=${Date.now()}`;
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('Network response was not ok');
                 const data = await response.json();
@@ -1230,24 +1311,7 @@ if ($view == 'list') {
                     throw new Error(data.error);
                 }
 
-                // Render Stream Pills
-                const available = data.available_streams || ['WRHU', 'HAWC', 'SPEV'];
-                const allStreams = ['Network_Total', ...available.filter(s => s !== 'Network_Total')];
-
-                // If currently requested stream is not in allStreams, add it
-                if (!allStreams.includes(currentStatsStream)) {
-                    allStreams.push(currentStatsStream);
-                }
-
-                let pillsHtml = '';
-                allStreams.forEach(s => {
-                    const activeClass = (s === currentStatsStream) ? ' active' : '';
-                    const label = (s === 'Network_Total') ? 'Network Total' : s;
-                    pillsHtml += `<button type="button" class="stream-pill${activeClass}" onclick="loadEventStats('${s}')">${label}</button>`;
-                });
-                pillsContainer.innerHTML = pillsHtml;
-
-                // Enforce strict boundaries: ONLY data points between startTs and endTs
+                // Strictly bound data points between startTs and endTs
                 const startMs = currentStatsEvent.startTs * 1000;
                 const endMs = currentStatsEvent.endTs * 1000;
 
@@ -1270,33 +1334,15 @@ if ($view == 'list') {
                 }
 
                 const totalPoints = filteredLabels.length;
-                let validValues = [];
-                const isStacked = (currentStatsStream === 'Network_Total');
 
-                if (totalPoints > 0) {
-                    if (isStacked) {
-                        for (let i = 0; i < totalPoints; i++) {
-                            let sum = 0;
-                            let hasVal = false;
-                            filteredDatasets.forEach(ds => {
-                                if (ds.label !== 'Total Peak' && typeof ds.data[i] === 'number') {
-                                    sum += ds.data[i];
-                                    hasVal = true;
-                                }
-                            });
-                            if (hasVal) validValues.push(sum);
-                        }
-                    } else {
-                        const avgDs = filteredDatasets.find(ds => ds.label === 'Average') || filteredDatasets[0];
-                        if (avgDs) {
-                            avgDs.data.forEach(v => {
-                                if (typeof v === 'number') validValues.push(v);
-                            });
-                        }
-                    }
-                }
+                // Extract valid series points
+                const peakDs = filteredDatasets.find(ds => ds.label === 'Peak');
+                const peakValues = peakDs ? peakDs.data.filter(v => typeof v === 'number' && !isNaN(v)) : [];
 
-                if (validValues.length === 0) {
+                const avgDs = filteredDatasets.find(ds => ds.label === 'Average') || filteredDatasets[0];
+                const avgValues = avgDs ? avgDs.data.filter(v => typeof v === 'number' && !isNaN(v)) : [];
+
+                if (avgValues.length === 0 && peakValues.length === 0 && (data.max_listeners === null || data.max_listeners === undefined)) {
                     emptyEl.style.display = 'flex';
                     if (eventStatsChartInstance) {
                         eventStatsChartInstance.destroy();
@@ -1306,15 +1352,27 @@ if ($view == 'list') {
                     return;
                 }
 
-                // Compute summary metrics
-                let peak = Math.max(...validValues);
-                let min = Math.min(...validValues);
-                let avg = validValues.reduce((a, b) => a + b, 0) / validValues.length;
+                // Peak listeners: true MAX value with ZERO averaging
+                // Priority:
+                // 1) data.max_listeners from RRDTool VDEF MAXIMUM calculation
+                // 2) Math.max of raw Peak dataset points (MAX consolidation)
+                // 3) Math.max of raw Average points (fallback if Peak dataset empty)
+                let peak = null;
+                if (data.max_listeners !== null && data.max_listeners !== undefined && !isNaN(data.max_listeners)) {
+                    peak = Number(data.max_listeners);
+                } else if (peakValues.length > 0) {
+                    peak = Math.max(...peakValues);
+                } else if (avgValues.length > 0) {
+                    peak = Math.max(...avgValues);
+                }
 
-                document.getElementById('eventStatsPeak').innerText = Math.ceil(peak).toLocaleString();
-                document.getElementById('eventStatsAvg').innerText = (Math.round(avg * 10) / 10).toLocaleString();
-                document.getElementById('eventStatsMin').innerText = Math.floor(min).toLocaleString();
-                document.getElementById('eventStatsPoints').innerText = validValues.length.toLocaleString();
+                let min = avgValues.length > 0 ? Math.min(...avgValues) : 0;
+                let avg = avgValues.length > 0 ? (avgValues.reduce((a, b) => a + b, 0) / avgValues.length) : 0;
+
+                document.getElementById('eventStatsPeak').innerText = (peak !== null) ? Math.ceil(peak).toLocaleString() : '--';
+                document.getElementById('eventStatsAvg').innerText = (avgValues.length > 0) ? (Math.round(avg * 10) / 10).toLocaleString() : '--';
+                document.getElementById('eventStatsMin').innerText = (avgValues.length > 0) ? Math.floor(min).toLocaleString() : '--';
+                document.getElementById('eventStatsPoints').innerText = totalPoints.toLocaleString();
 
                 // Prepare Chart.js
                 if (eventStatsChartInstance) {
@@ -1322,20 +1380,15 @@ if ($view == 'list') {
                     eventStatsChartInstance = null;
                 }
 
-                let datasetsToDraw = filteredDatasets;
-                if (isStacked) {
-                    datasetsToDraw = filteredDatasets.filter(ds => ds.label !== 'Total Peak');
-                }
-
-                const colors = ['#4db8ff', '#ff5555', '#4caf50', '#ffeb3b', '#9c27b0'];
-                const chartDatasets = datasetsToDraw.map((ds, index) => {
-                    const color = (ds.label === 'Peak') ? '#ff5555' : (colors[index % colors.length]);
+                const chartDatasets = filteredDatasets.map(ds => {
+                    const isPeak = (ds.label === 'Peak');
+                    const color = isPeak ? '#ff5555' : '#4db8ff';
                     return {
-                        label: ds.label,
+                        label: isPeak ? 'Peak (Max)' : 'Average',
                         data: ds.data,
                         borderColor: color,
-                        backgroundColor: color + '33',
-                        fill: isStacked || ds.label === 'Average',
+                        backgroundColor: isPeak ? 'rgba(255, 85, 85, 0.08)' : 'rgba(77, 184, 255, 0.2)',
+                        fill: !isPeak,
                         borderWidth: 2,
                         pointRadius: totalPoints <= 25 ? 3 : 0,
                         pointHoverRadius: 5,
@@ -1365,8 +1418,7 @@ if ($view == 'list') {
                             y: {
                                 beginAtZero: true,
                                 grid: { color: 'rgba(255,255,255,0.07)' },
-                                ticks: { color: '#888', precision: 0 },
-                                stacked: isStacked
+                                ticks: { color: '#888', precision: 0 }
                             }
                         },
                         plugins: {
