@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../db_connect.php';
+require_once __DIR__ . '/../ScheduleLogic.php';
 
 class EventRepository
 {
@@ -59,12 +60,18 @@ class EventRepository
             $finalEvents[] = $ev;
         }
 
+        // Resolve preemption conflicts dynamically
+        $resolved = ScheduleLogic::resolveSchedule($finalEvents);
+        if ($tagId === null) {
+            $resolved = ScheduleLogic::deduplicateSegments($resolved);
+        }
+
         // Sort by start time
-        usort($finalEvents, function ($a, $b) {
+        usort($resolved, function ($a, $b) {
             return strcmp($a['start_time'], $b['start_time']);
         });
 
-        return $finalEvents;
+        return $resolved;
     }
 
     /**
@@ -94,12 +101,71 @@ class EventRepository
     }
 
     /**
-     * Get future one-off events for List View.
+     * Get future one-off events for List View, with preemption resolved.
      */
     public function getFutureEvents($tagId = null)
     {
         $now = gmdate('Y-m-d H:i:s');
-        return $this->fetchOneOffEvents($now, '2037-12-31', $tagId, true);
+        $rawOneOffs = $this->fetchOneOffEvents($now, '2037-12-31', $tagId, false);
+
+        if (empty($rawOneOffs)) {
+            return [];
+        }
+
+        // Find the range of future one-offs to check for overlapping recurring events
+        $minStart = $rawOneOffs[0]['start_time'];
+        $maxEnd = $rawOneOffs[0]['end_time'];
+        foreach ($rawOneOffs as $ev) {
+            if ($ev['start_time'] < $minStart) $minStart = $ev['start_time'];
+            if ($ev['end_time'] > $maxEnd) $maxEnd = $ev['end_time'];
+        }
+
+        // Limit the window for expanding recurring series to 1 year from now for performance
+        $maxWindow = gmdate('Y-m-d H:i:s', strtotime('+1 year'));
+        $windowEnd = ($maxEnd > $maxWindow) ? $maxWindow : $maxEnd;
+
+        $series = $this->fetchRecurringSeries($minStart, $windowEnd, $tagId, true);
+        $instances = [];
+        foreach ($series as $s) {
+            $instances = array_merge($instances, $this->expandRecurrence($s, $minStart, $windowEnd));
+        }
+
+        // Index exceptions
+        $exceptions = [];
+        foreach ($rawOneOffs as $ev) {
+            if ($ev['is_exception'] && $ev['recurring_event_id'] && $ev['original_start_time']) {
+                $key = $ev['recurring_event_id'] . '_' . $ev['original_start_time'];
+                $exceptions[$key] = true;
+            }
+        }
+
+        $allToResolve = [];
+        foreach ($instances as $inst) {
+            $key = $inst['recurring_event_id'] . '_' . $inst['start_time'];
+            if (!isset($exceptions[$key])) {
+                $allToResolve[] = $inst;
+            }
+        }
+        foreach ($rawOneOffs as $ev) {
+            $allToResolve[] = $ev;
+        }
+
+        $resolved = ScheduleLogic::resolveSchedule($allToResolve);
+
+        // Only return one-off events (not generated recurring instances, which are shown as series templates in List View)
+        $oneOffSegments = array_filter($resolved, function ($ev) {
+            return empty($ev['is_generated']);
+        });
+
+        if ($tagId === null) {
+            $oneOffSegments = ScheduleLogic::deduplicateSegments(array_values($oneOffSegments));
+        }
+
+        usort($oneOffSegments, function ($a, $b) {
+            return strcmp($a['start_time'], $b['start_time']);
+        });
+
+        return array_values($oneOffSegments);
     }
 
     /**
@@ -229,9 +295,10 @@ class EventRepository
             ";
         } else {
             $sql = "
-                SELECT e.*, 'none' as recurrence_type, a.filename_original, et.tag_id
+                SELECT e.*, 'none' as recurrence_type, a.filename_original, et.tag_id, t.tag_name
                 FROM events e
                 LEFT JOIN event_tags et ON e.id = et.event_id
+                LEFT JOIN tags t ON et.tag_id = t.id
                 LEFT JOIN assets a ON e.asset_id = a.id
                 WHERE e.end_time >= ? AND e.start_time <= ?
             ";
@@ -267,9 +334,10 @@ class EventRepository
             ";
         } else {
             $sql = "
-                SELECT re.*, a.filename_original, ret.tag_id
+                SELECT re.*, a.filename_original, ret.tag_id, t.tag_name
                 FROM recurring_events re
                 LEFT JOIN recurring_event_tags ret ON re.id = ret.recurring_event_id
+                LEFT JOIN tags t ON ret.tag_id = t.id
                 LEFT JOIN assets a ON re.asset_id = a.id
                 WHERE re.start_date <= ? 
                   AND (re.end_date IS NULL OR re.end_date >= ?)

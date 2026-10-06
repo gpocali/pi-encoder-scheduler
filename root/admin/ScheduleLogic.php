@@ -15,7 +15,21 @@ class ScheduleLogic
         // Group by tag_id because priorities only compete within the same tag (channel)
         $eventsByTag = [];
         foreach ($events as $ev) {
-            $eventsByTag[$ev['tag_id']][] = $ev;
+            if (!empty($ev['tag_id'])) {
+                $eventsByTag[$ev['tag_id']][] = $ev;
+            } elseif (!empty($ev['tag_ids'])) {
+                $tagIdList = is_array($ev['tag_ids']) ? $ev['tag_ids'] : explode(',', (string) $ev['tag_ids']);
+                foreach ($tagIdList as $tId) {
+                    $tId = trim($tId);
+                    if ($tId !== '') {
+                        $evCopy = $ev;
+                        $evCopy['tag_id'] = (int) $tId;
+                        $eventsByTag[(int) $tId][] = $evCopy;
+                    }
+                }
+            } else {
+                $eventsByTag['no_tag'][] = $ev;
+            }
         }
 
         $finalSegments = [];
@@ -32,18 +46,22 @@ class ScheduleLogic
                 return strcmp($a['start_time'], $b['start_time']);
             });
 
-            $placedSegments = []; // Array of ['start' => ts, 'end' => ts]
+            $placedSegments = []; // Array of ['start' => ts, 'end' => ts, 'priority' => int]
 
             foreach ($tagEvents as $ev) {
                 // Use UTC timestamps for calculation to avoid timezone shifts
                 $evStart = strtotime($ev['start_time'] . ' UTC');
                 $evEnd = strtotime($ev['end_time'] . ' UTC');
+                $evPrio = (int) ($ev['priority'] ?? 0);
 
                 // Start with the full event as a single candidate segment
                 $candidates = [['start' => $evStart, 'end' => $evEnd]];
 
                 // Subtract all higher-priority placed segments from these candidates
                 foreach ($placedSegments as $placed) {
+                    if ($placed['priority'] <= $evPrio) {
+                        continue;
+                    }
                     $newCandidates = [];
                     foreach ($candidates as $cand) {
                         $subtracted = self::subtractInterval($cand, $placed);
@@ -65,10 +83,20 @@ class ScheduleLogic
                     // Mark as modified if it differs from original
                     if ($cand['start'] != $evStart || $cand['end'] != $evEnd) {
                         $newEv['is_modified'] = true;
+                        if (!isset($newEv['original_start_time'])) {
+                            $newEv['original_start_time'] = $ev['start_time'];
+                        }
+                        if (!isset($newEv['original_end_time'])) {
+                            $newEv['original_end_time'] = $ev['end_time'];
+                        }
                     }
 
                     $finalSegments[] = $newEv;
-                    $placedSegments[] = $cand;
+                    $placedSegments[] = [
+                        'start' => $cand['start'],
+                        'end' => $cand['end'],
+                        'priority' => $evPrio
+                    ];
                 }
             }
         }

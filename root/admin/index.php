@@ -43,6 +43,10 @@ function getEventTagNames($ev, $pdo, $tag_names_by_id)
         return [];
     }
 
+    if (!empty($ev['is_modified']) && !empty($ev['tag_id']) && isset($tag_names_by_id[$ev['tag_id']])) {
+        return [$tag_names_by_id[$ev['tag_id']]];
+    }
+
     if (isset($tags_cache[$ev_id])) {
         return $tags_cache[$ev_id];
     }
@@ -893,6 +897,9 @@ if ($view == 'list') {
                                 echo '<div class="cal-event priority-' . $ev['priority'] . ' ' . $status_class . '" style="padding:5px; margin-bottom:5px;">';
                                 echo '<div style="display:flex; justify-content:space-between; align-items:center;">';
                                 echo '<b>' . $start . '-' . $end . '</b>';
+                                if (!empty($ev['is_modified'])) {
+                                    echo ' <small style="color:orange; font-size:0.75em;">(Preempted)</small>';
+                                }
                                 echo '<a href="' . $link_url . '" title="View event details" style="color:#777; text-decoration:none;"><i class="bi bi-info-circle"></i></a>';
                                 echo '</div>';
                                 echo '<div class="event-name-stats-clickable" title="Click to view listener statistics" style="cursor:pointer; text-decoration:underline; margin-top:3px; word-break:break-word; font-weight:500;" ' .
@@ -963,6 +970,9 @@ if ($view == 'list') {
                                     <?php echo $status_label; ?>
                                     <?php if ($ev['priority'] == 2): ?>
                                         <span class="badge badge-live" style="margin-left:10px; font-size:0.7em;">HIGH PRIORITY</span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($ev['is_modified'])): ?>
+                                        <small style="color:orange; font-size:0.7em; margin-left:8px;">(Preempted)</small>
                                     <?php endif; ?>
                                 </div>
                                 <?php
