@@ -793,8 +793,14 @@ if ($view == 'list') {
             </div>
 
         <?php elseif ($view == 'day'): ?>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <a href="<?php echo urlWithParam('date', date('Y-m-d', strtotime($filter_date . ' -1 day'))); ?>"
+                    class="btn btn-sm btn-secondary">&laquo; Previous Day</a>
+                <h3 style="margin:0;"><?php echo date('l, F j, Y', strtotime($filter_date)); ?></h3>
+                <a href="<?php echo urlWithParam('date', date('Y-m-d', strtotime($filter_date . ' +1 day'))); ?>"
+                    class="btn btn-sm btn-secondary">Next Day &raquo;</a>
+            </div>
             <div style="background:var(--card-bg); padding:2em; border-radius:8px;">
-                <h3>Events for <?php echo date('F j, Y', strtotime($filter_date)); ?></h3>
                 <?php if (empty($events)): ?>
                     <p style="color:#777;">No events scheduled for this day.</p>
                 <?php else: ?>
