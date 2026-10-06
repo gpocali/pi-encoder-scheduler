@@ -59,6 +59,11 @@ $cmd_parts = [];
 $xport_parts = [];
 $legends = [];
 
+$tags_param = $_GET['tags'] ?? $_GET['streams'] ?? '';
+$is_total_aggregate = ($stream === 'Total' || $stream === 'Event_Total');
+
+$max_listeners = null;
+
 if ($stream === 'Network_Total') {
     $files = glob("$storage_dir/*_Global.rrd");
     $i = 0;
@@ -90,6 +95,97 @@ if ($stream === 'Network_Total') {
             $legends[] = "Total Peak";
         }
     }
+} elseif ($is_total_aggregate) {
+    // Total aggregate for specific requested tags (for multi-tag events)
+    $requested_tags = array_filter(array_map('trim', explode(',', $tags_param)));
+    if (empty($requested_tags)) {
+        $requested_tags = $available_streams;
+    }
+
+    $all_rrds = glob("$storage_dir/*_{$node}.rrd") ?: [];
+    $matched_files = [];
+
+    foreach ($requested_tags as $req_tag) {
+        $req_clean = preg_replace('/[^a-zA-Z0-9_-]/', '', $req_tag);
+        if (!$req_clean) continue;
+
+        $target_file = "$storage_dir/{$req_clean}_{$node}.rrd";
+        if (file_exists($target_file)) {
+            $matched_files[$req_clean] = $target_file;
+        } else {
+            foreach ($all_rrds as $candidate) {
+                $base = basename($candidate, "_{$node}.rrd");
+                if (strcasecmp($base, $req_clean) === 0 || stripos($req_clean, $base) !== false || stripos($base, $req_clean) !== false) {
+                    $matched_files[$base] = $candidate;
+                    break;
+                }
+            }
+        }
+    }
+
+    $i = 0;
+    $avg_parts = [];
+    $max_parts = [];
+
+    foreach ($matched_files as $tag_label => $file) {
+        $cmd_parts[] = "DEF:val$i=$file:listeners:AVERAGE";
+        $cmd_parts[] = "DEF:max$i=$file:listeners:MAX";
+        $xport_parts[] = "XPORT:val$i:\"$tag_label\"";
+        $legends[] = $tag_label;
+
+        $avg_parts[] = "val$i";
+        $max_parts[] = "max$i";
+        $i++;
+    }
+
+    if (!empty($avg_parts)) {
+        $avg_expr = $avg_parts[0];
+        for ($k = 1; $k < count($avg_parts); $k++) {
+            $avg_expr .= "," . $avg_parts[$k] . ",+";
+        }
+        $cmd_parts[] = "CDEF:totalAvg=$avg_expr";
+        $xport_parts[] = "XPORT:totalAvg:\"Total Average\"";
+        $legends[] = "Total Average";
+    }
+
+    if (!empty($max_parts)) {
+        $max_expr = $max_parts[0];
+        for ($k = 1; $k < count($max_parts); $k++) {
+            $max_expr .= "," . $max_parts[$k] . ",+";
+        }
+        $cmd_parts[] = "CDEF:totalMax=$max_expr";
+        $cmd_parts[] = "CDEF:totalMaxCeil=totalMax,CEIL";
+        $xport_parts[] = "XPORT:totalMaxCeil:\"Total Peak\"";
+        $legends[] = "Total Peak";
+    }
+
+    // Compute un-averaged pure MAX aggregate listeners across the timeframe
+    if ($is_custom_range && !empty($max_parts)) {
+        $dev_null = (DIRECTORY_SEPARATOR === '\\') ? 'NUL' : '/dev/null';
+        $def_str = "";
+        $m_parts = [];
+        $mi = 0;
+        foreach ($matched_files as $tag_label => $file) {
+            $def_str .= " DEF:m$mi=$file:listeners:MAX";
+            $m_parts[] = "m$mi";
+            $mi++;
+        }
+        $rpn_tot = $m_parts[0];
+        for ($k = 1; $k < count($m_parts); $k++) {
+            $rpn_tot .= "," . $m_parts[$k] . ",+";
+        }
+        $cmd_max = "rrdtool graph $dev_null --start $start_ts --end $end_ts$def_str CDEF:totMax=$rpn_tot VDEF:vmax=totMax,MAXIMUM PRINT:vmax:\"%lf\"";
+        exec($cmd_max, $max_out, $max_ret);
+        if ($max_ret === 0 && !empty($max_out)) {
+            foreach ($max_out as $line) {
+                $line = trim($line);
+                if (is_numeric($line) && !is_nan((float) $line)) {
+                    $max_listeners = (float) $line;
+                    break;
+                }
+            }
+        }
+    }
 } else {
     $rrd_file = "$storage_dir/{$stream}_{$node}.rrd";
     if (!file_exists($rrd_file)) {
@@ -114,20 +210,19 @@ if ($stream === 'Network_Total') {
         $xport_parts[] = "XPORT:maxCeil:\"Peak\"";
         $legends = ["Average", "Peak"];
     }
-}
 
-// Compute pure MAX listeners across the timeframe with zero averaging
-$max_listeners = null;
-if ($is_custom_range && !empty($rrd_file) && file_exists($rrd_file)) {
-    $dev_null = (DIRECTORY_SEPARATOR === '\\') ? 'NUL' : '/dev/null';
-    $cmd_max = "rrdtool graph $dev_null --start $start_ts --end $end_ts DEF:max_val=$rrd_file:listeners:MAX VDEF:vmax=max_val,MAXIMUM PRINT:vmax:\"%lf\"";
-    exec($cmd_max, $max_out, $max_ret);
-    if ($max_ret === 0 && !empty($max_out)) {
-        foreach ($max_out as $line) {
-            $line = trim($line);
-            if (is_numeric($line) && !is_nan((float) $line)) {
-                $max_listeners = (float) $line;
-                break;
+    // Compute pure MAX listeners across the timeframe with zero averaging
+    if ($is_custom_range && !empty($rrd_file) && file_exists($rrd_file)) {
+        $dev_null = (DIRECTORY_SEPARATOR === '\\') ? 'NUL' : '/dev/null';
+        $cmd_max = "rrdtool graph $dev_null --start $start_ts --end $end_ts DEF:max_val=$rrd_file:listeners:MAX VDEF:vmax=max_val,MAXIMUM PRINT:vmax:\"%lf\"";
+        exec($cmd_max, $max_out, $max_ret);
+        if ($max_ret === 0 && !empty($max_out)) {
+            foreach ($max_out as $line) {
+                $line = trim($line);
+                if (is_numeric($line) && !is_nan((float) $line)) {
+                    $max_listeners = (float) $line;
+                    break;
+                }
             }
         }
     }

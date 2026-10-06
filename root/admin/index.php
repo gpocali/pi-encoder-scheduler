@@ -1232,8 +1232,13 @@ if ($view == 'list') {
             if (durMins > 0 || durHrs === 0) durText += durMins + 'm';
             document.getElementById('eventStatsDurationBadge').innerText = 'Duration: ' + durText.trim();
 
-            // Default stream is the first tag assigned to the event
-            const initialStream = eventTags.length > 0 ? eventTags[0] : '';
+            // If multiple tags are assigned, default to 'Total' (Total Listeners), otherwise the single tag
+            let initialStream = '';
+            if (eventTags.length > 1) {
+                initialStream = 'Total';
+            } else if (eventTags.length === 1) {
+                initialStream = eventTags[0];
+            }
             currentStatsStream = initialStream;
 
             document.getElementById('eventStatsModal').style.display = 'block';
@@ -1282,18 +1287,28 @@ if ($view == 'list') {
                 return;
             }
 
-            // Ensure currentStatsStream is valid within eventTags
-            if (!currentStatsStream || !eventTags.includes(currentStatsStream)) {
-                currentStatsStream = eventTags[0];
+            const isMultiTag = eventTags.length > 1;
+
+            // Ensure currentStatsStream is valid
+            if (isMultiTag) {
+                if (!currentStatsStream || (!eventTags.includes(currentStatsStream) && currentStatsStream !== 'Total')) {
+                    currentStatsStream = 'Total';
+                }
+            } else {
+                if (!currentStatsStream || !eventTags.includes(currentStatsStream)) {
+                    currentStatsStream = eventTags[0];
+                }
             }
 
             // Render stream pills strictly for the selected tags of the event
             let pillsHtml = '';
-            if (eventTags.length === 1) {
+            if (!isMultiTag) {
                 // If only 1 tag was selected for this event, display it as an active badge
                 pillsHtml = `<button type="button" class="stream-pill active" style="cursor:default;">${escapeHtml(eventTags[0])}</button>`;
             } else {
-                // Multiple tags were selected: render selector buttons ONLY for those tags
+                // Multiple tags were selected: render 'Total Listeners' button PLUS each selected tag
+                const totalActiveClass = (currentStatsStream === 'Total') ? ' active' : '';
+                pillsHtml += `<button type="button" class="stream-pill${totalActiveClass}" onclick="loadEventStats('Total')">Total Listeners</button>`;
                 eventTags.forEach(t => {
                     const activeClass = (t === currentStatsStream) ? ' active' : '';
                     pillsHtml += `<button type="button" class="stream-pill${activeClass}" onclick="loadEventStats('${escapeJs(t)}')">${escapeHtml(t)}</button>`;
@@ -1302,7 +1317,14 @@ if ($view == 'list') {
             pillsContainer.innerHTML = pillsHtml;
 
             try {
-                const url = `api_graph_data.php?s=${encodeURIComponent(currentStatsStream)}&n=Global&start=${currentStatsEvent.startTs}&end=${currentStatsEvent.endTs}&nocache=${Date.now()}`;
+                let url = '';
+                if (currentStatsStream === 'Total') {
+                    const tagsParam = eventTags.join(',');
+                    url = `api_graph_data.php?s=Total&tags=${encodeURIComponent(tagsParam)}&n=Global&start=${currentStatsEvent.startTs}&end=${currentStatsEvent.endTs}&nocache=${Date.now()}`;
+                } else {
+                    url = `api_graph_data.php?s=${encodeURIComponent(currentStatsStream)}&n=Global&start=${currentStatsEvent.startTs}&end=${currentStatsEvent.endTs}&nocache=${Date.now()}`;
+                }
+
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('Network response was not ok');
                 const data = await response.json();
@@ -1334,13 +1356,41 @@ if ($view == 'list') {
                 }
 
                 const totalPoints = filteredLabels.length;
+                const isTotal = (currentStatsStream === 'Total');
 
                 // Extract valid series points
-                const peakDs = filteredDatasets.find(ds => ds.label === 'Peak');
-                const peakValues = peakDs ? peakDs.data.filter(v => typeof v === 'number' && !isNaN(v)) : [];
+                let avgValues = [];
+                let peakValues = [];
 
-                const avgDs = filteredDatasets.find(ds => ds.label === 'Average') || filteredDatasets[0];
-                const avgValues = avgDs ? avgDs.data.filter(v => typeof v === 'number' && !isNaN(v)) : [];
+                if (isTotal) {
+                    const totalPeakDs = filteredDatasets.find(ds => ds.label === 'Total Peak');
+                    peakValues = totalPeakDs ? totalPeakDs.data.filter(v => typeof v === 'number' && !isNaN(v)) : [];
+
+                    const totalAvgDs = filteredDatasets.find(ds => ds.label === 'Total Average');
+                    if (totalAvgDs) {
+                        avgValues = totalAvgDs.data.filter(v => typeof v === 'number' && !isNaN(v));
+                    } else {
+                        // Sum tag averages at each timestamp
+                        const tagDs = filteredDatasets.filter(ds => ds.label !== 'Total Peak' && ds.label !== 'Total Average');
+                        for (let i = 0; i < totalPoints; i++) {
+                            let sum = 0;
+                            let hasVal = false;
+                            tagDs.forEach(ds => {
+                                if (typeof ds.data[i] === 'number') {
+                                    sum += ds.data[i];
+                                    hasVal = true;
+                                }
+                            });
+                            if (hasVal) avgValues.push(sum);
+                        }
+                    }
+                } else {
+                    const peakDs = filteredDatasets.find(ds => ds.label === 'Peak');
+                    peakValues = peakDs ? peakDs.data.filter(v => typeof v === 'number' && !isNaN(v)) : [];
+
+                    const avgDs = filteredDatasets.find(ds => ds.label === 'Average') || filteredDatasets[0];
+                    avgValues = avgDs ? avgDs.data.filter(v => typeof v === 'number' && !isNaN(v)) : [];
+                }
 
                 if (avgValues.length === 0 && peakValues.length === 0 && (data.max_listeners === null || data.max_listeners === undefined)) {
                     emptyEl.style.display = 'flex';
@@ -1355,8 +1405,8 @@ if ($view == 'list') {
                 // Peak listeners: true MAX value with ZERO averaging
                 // Priority:
                 // 1) data.max_listeners from RRDTool VDEF MAXIMUM calculation
-                // 2) Math.max of raw Peak dataset points (MAX consolidation)
-                // 3) Math.max of raw Average points (fallback if Peak dataset empty)
+                // 2) Math.max of raw Peak / Total Peak dataset points (MAX consolidation)
+                // 3) Math.max of raw Average points (fallback)
                 let peak = null;
                 if (data.max_listeners !== null && data.max_listeners !== undefined && !isNaN(data.max_listeners)) {
                     peak = Number(data.max_listeners);
@@ -1380,15 +1430,22 @@ if ($view == 'list') {
                     eventStatsChartInstance = null;
                 }
 
-                const chartDatasets = filteredDatasets.map(ds => {
+                let datasetsToDraw = filteredDatasets;
+                if (isTotal) {
+                    // For stacked aggregate visual, exclude the calculation totals from drawing so individual channels stack cleanly
+                    datasetsToDraw = filteredDatasets.filter(ds => ds.label !== 'Total Peak' && ds.label !== 'Total Average');
+                }
+
+                const colors = ['#4db8ff', '#2ecc71', '#ff9800', '#e91e63', '#9c27b0'];
+                const chartDatasets = datasetsToDraw.map((ds, index) => {
                     const isPeak = (ds.label === 'Peak');
-                    const color = isPeak ? '#ff5555' : '#4db8ff';
+                    const color = isTotal ? colors[index % colors.length] : (isPeak ? '#ff5555' : '#4db8ff');
                     return {
-                        label: isPeak ? 'Peak (Max)' : 'Average',
+                        label: isTotal ? ds.label : (isPeak ? 'Peak (Max)' : 'Average'),
                         data: ds.data,
                         borderColor: color,
-                        backgroundColor: isPeak ? 'rgba(255, 85, 85, 0.08)' : 'rgba(77, 184, 255, 0.2)',
-                        fill: !isPeak,
+                        backgroundColor: isTotal ? (color + '33') : (isPeak ? 'rgba(255, 85, 85, 0.08)' : 'rgba(77, 184, 255, 0.2)'),
+                        fill: isTotal || !isPeak,
                         borderWidth: 2,
                         pointRadius: totalPoints <= 25 ? 3 : 0,
                         pointHoverRadius: 5,
@@ -1418,7 +1475,8 @@ if ($view == 'list') {
                             y: {
                                 beginAtZero: true,
                                 grid: { color: 'rgba(255,255,255,0.07)' },
-                                ticks: { color: '#888', precision: 0 }
+                                ticks: { color: '#888', precision: 0 },
+                                stacked: isTotal
                             }
                         },
                         plugins: {
