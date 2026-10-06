@@ -14,27 +14,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     
     // Export action
     if ($_POST['action'] === 'export_events') {
+        $export_mode = $_POST['export_mode'] ?? 'range';
+        $full_backup = ($export_mode === 'full');
+        $tag_id = isset($_POST['export_tag']) && $_POST['export_tag'] !== '' && $_POST['export_tag'] !== 'all' ? (int)$_POST['export_tag'] : null;
         $start_date = $_POST['export_start'] ?? '';
         $end_date = $_POST['export_end'] ?? '';
         
-        if (empty($start_date) || empty($end_date)) {
-            $errors[] = 'Please select both start and end dates for export.';
+        if (!$full_backup && (empty($start_date) || empty($end_date))) {
+            $errors[] = 'Please select both start and end dates for export, or choose Full Backup.';
         } else {
             try {
-                // Validate dates
-                new DateTime($start_date);
-                new DateTime($end_date);
+                if (!$full_backup) {
+                    new DateTime($start_date);
+                    new DateTime($end_date);
+                }
                 
-                // Fetch events from API endpoint logic
-                require_once 'api_import_export.php';
-                // We need to simulate the GET request
-                $_GET['start'] = $start_date;
-                $_GET['end'] = $end_date;
-                
-                // Use output buffering to capture the JSON
-                ob_start();
-                // Re-run the export logic (GET portion)
-                $export_data = export_events($start_date, $end_date);
+                $export_data = export_events($start_date, $end_date, $tag_id, $full_backup);
                 
                 if ($export_data === false) {
                     $errors[] = 'Failed to export events.';
@@ -49,7 +44,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     
     // Import action
     if ($_POST['action'] === 'import_events') {
-        $json_input = $_POST['import_json'] ?? '';
+        $json_input = trim($_POST['import_json'] ?? '');
+        
+        // Check if a file was uploaded
+        if (empty($json_input) && isset($_FILES['import_file']) && $_FILES['import_file']['error'] === UPLOAD_ERR_OK) {
+            $json_input = file_get_contents($_FILES['import_file']['tmp_name']);
+        }
         
         if (empty($json_input)) {
             $errors[] = 'Please paste JSON data or upload a file to import.';
@@ -59,14 +59,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if (!is_array($import_data)) {
                 $errors[] = 'Invalid JSON format. Please provide a valid JSON array of events.';
             } else {
-                require_once 'api_import_export.php';
-                $_POST['import_data'] = $import_data;
                 $import_results = process_import($import_data);
                 
                 if ($import_results === false) {
                     $errors[] = 'Import failed. Check the error messages.';
                 } else {
-                    $success_message = "Import completed: {$import_results['success']} events processed ({$import_results['created']} created, {$import_results['updated']} updated).";
+                    $created_count = count($import_results['created']);
+                    $updated_count = count($import_results['updated']);
+                    $success_message = "Import completed: {$import_results['success']} events processed ({$created_count} created, {$updated_count} updated).";
                     if (!empty($import_results['errors'])) {
                         $errors = array_merge($errors, $import_results['errors']);
                     }
@@ -77,8 +77,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 
 // Export helper function
-function export_events($start_date, $end_date) {
+function export_events($start_date, $end_date, $tag_id = null, $full_backup = false) {
     global $pdo;
+    
+    $where_clauses = [];
+    $params = [];
+    
+    // Date range filter
+    if (!$full_backup) {
+        $where_clauses[] = "e.start_time <= ? AND e.end_time >= ?";
+        $params[] = $end_date;
+        $params[] = $start_date;
+    } elseif (!empty($start_date) && !empty($end_date)) {
+        $where_clauses[] = "e.start_time <= ? AND e.end_time >= ?";
+        $params[] = $end_date;
+        $params[] = $start_date;
+    }
+    
+    // Tag filter
+    if ($tag_id !== null && $tag_id > 0) {
+        $where_clauses[] = "e.id IN (SELECT event_id FROM event_tags WHERE tag_id = ?)";
+        $params[] = $tag_id;
+    }
+    
+    $where_sql = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
     
     $sql = "
         SELECT 
@@ -92,13 +114,13 @@ function export_events($start_date, $end_date) {
             GROUP_CONCAT(et.tag_id ORDER BY et.tag_id SEPARATOR ',') as tag_ids
         FROM events e
         LEFT JOIN event_tags et ON e.id = et.event_id
-        WHERE e.start_time <= ? AND e.end_time >= ?
+        $where_sql
         GROUP BY e.id
         ORDER BY e.start_time ASC
     ";
     
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([$end_date, $start_date]);
+    $stmt->execute($params);
     $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     $export_data = [];
@@ -272,6 +294,15 @@ function process_import($input_data) {
 // Get date range defaults
 $default_start = date('Y-m-d', strtotime('-7 days'));
 $default_end = date('Y-m-d', strtotime('+7 days'));
+
+// Fetch tags for tag filter selection
+$tags_stmt = $pdo->query("SELECT id, tag_name FROM tags ORDER BY tag_name ASC");
+$tags_list = $tags_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$selected_export_mode = $_POST['export_mode'] ?? 'range';
+$selected_export_tag = $_POST['export_tag'] ?? 'all';
+$selected_start = !empty($_POST['export_start']) ? $_POST['export_start'] : $default_start;
+$selected_end = !empty($_POST['export_end']) ? $_POST['export_end'] : $default_end;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -280,6 +311,25 @@ $default_end = date('Y-m-d', strtotime('+7 days'));
     <title>Import / Export Events - WRHU Encoder Scheduler</title>
     <link rel="stylesheet" href="style.css">
     <script>
+        function toggleExportMode(mode) {
+            const dateFields = document.getElementById('export_date_fields');
+            const startInput = document.getElementById('export_start');
+            const endInput = document.getElementById('export_end');
+            if (mode === 'full') {
+                dateFields.style.opacity = '0.5';
+                startInput.disabled = true;
+                endInput.disabled = true;
+                startInput.required = false;
+                endInput.required = false;
+            } else {
+                dateFields.style.opacity = '1';
+                startInput.disabled = false;
+                endInput.disabled = false;
+                startInput.required = true;
+                endInput.required = true;
+            }
+        }
+
         function downloadExportData() {
             if (exportData.length === 0) {
                 alert('No data to export. Please perform an export first.');
@@ -297,6 +347,7 @@ $default_end = date('Y-m-d', strtotime('+7 days'));
         }
 
         function loadImportFile(file) {
+            if (!file) return;
             const reader = new FileReader();
             reader.onload = function(e) {
                 document.getElementById('import_json').value = e.target.result;
@@ -325,23 +376,14 @@ $default_end = date('Y-m-d', strtotime('+7 days'));
                 data.forEach((event, i) => {
                     console.log(`Event #${i + 1}:`, event.event_name, '-', event.start_time, 'to', event.end_time);
                 });
-                alert(`Preview: ${data.length} events will be imported.\\nCheck the browser console for details.`);
+                alert(`Preview: ${data.length} event(s) found in JSON data.\nOpen developer console for full details.`);
             } catch (e) {
                 alert('Invalid JSON: ' + e.message);
             }
         }
 
         // Store exported data for download
-        let exportData = [];
-        
-        function handleExportResponse(jsonStr) {
-            try {
-                exportData = JSON.parse(jsonStr);
-                alert('Export successful! ' + exportData.length + ' events exported.\\nClick "Download JSON" to save the file.');
-            } catch (e) {
-                alert('Export completed but could not parse response.');
-            }
-        }
+        let exportData = <?php echo ($export_data !== null) ? json_encode($export_data) : '[]'; ?>;
     </script>
 </head>
 <body>
@@ -364,40 +406,72 @@ $default_end = date('Y-m-d', strtotime('+7 days'));
         <!-- Export Section -->
         <div class="card">
             <h2>Export Events</h2>
-            <p style="color:#aaa; margin-top:-10px; margin-bottom:15px;">Export all events within a date range as JSON.</p>
+            <p style="color:#aaa; margin-top:-10px; margin-bottom:15px;">Export scheduled events as JSON by date range, tag, or as a full backup.</p>
             
             <form method="POST" action="import_export.php">
                 <input type="hidden" name="action" value="export_events">
                 
-                <div style="display:flex; gap:20px; align-items:flex-end; margin-bottom:15px;">
-                    <div style="flex:1;">
-                        <label for="export_start">Start Date</label>
-                        <input type="date" id="export_start" name="export_start" 
-                               value="<?php echo htmlspecialchars($default_start); ?>" required
-                               style="width:100%; padding:8px; background:#2c2c2c; border:1px solid #333; color:#fff; border-radius:4px;">
+                <div style="margin-bottom:15px; display:flex; gap:20px; align-items:center;">
+                    <label style="font-weight:bold; margin-right:5px;">Scope:</label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                        <input type="radio" name="export_mode" value="range" <?php echo ($selected_export_mode !== 'full') ? 'checked' : ''; ?> onchange="toggleExportMode('range')">
+                        Date Range
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                        <input type="radio" name="export_mode" value="full" <?php echo ($selected_export_mode === 'full') ? 'checked' : ''; ?> onchange="toggleExportMode('full')">
+                        Full Backup (All Events)
+                    </label>
+                </div>
+
+                <div style="display:flex; flex-wrap:wrap; gap:20px; align-items:flex-end; margin-bottom:15px;">
+                    <div style="flex:1; min-width:180px;">
+                        <label for="export_tag">Filter by Tag</label>
+                        <select id="export_tag" name="export_tag" 
+                                style="width:100%; padding:8px; background:#2c2c2c; border:1px solid #333; color:#fff; border-radius:4px;">
+                            <option value="all" <?php echo ($selected_export_tag === 'all') ? 'selected' : ''; ?>>All Tags</option>
+                            <?php foreach ($tags_list as $t): ?>
+                                <option value="<?php echo $t['id']; ?>" <?php echo ((string)$selected_export_tag === (string)$t['id']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($t['tag_name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
-                    <div style="flex:1;">
-                        <label for="export_end">End Date</label>
-                        <input type="date" id="export_end" name="export_end" 
-                               value="<?php echo htmlspecialchars($default_end); ?>" required
-                               style="width:100%; padding:8px; background:#2c2c2c; border:1px solid #333; color:#fff; border-radius:4px;">
+
+                    <div id="export_date_fields" style="display:flex; flex:2; gap:15px; min-width:300px; <?php echo ($selected_export_mode === 'full') ? 'opacity:0.5;' : ''; ?>">
+                        <div style="flex:1;">
+                            <label for="export_start">Start Date</label>
+                            <input type="date" id="export_start" name="export_start" 
+                                   value="<?php echo htmlspecialchars($selected_start); ?>" 
+                                   <?php echo ($selected_export_mode === 'full') ? 'disabled' : 'required'; ?>
+                                   style="width:100%; padding:8px; background:#2c2c2c; border:1px solid #333; color:#fff; border-radius:4px;">
+                        </div>
+                        <div style="flex:1;">
+                            <label for="export_end">End Date</label>
+                            <input type="date" id="export_end" name="export_end" 
+                                   value="<?php echo htmlspecialchars($selected_end); ?>" 
+                                   <?php echo ($selected_export_mode === 'full') ? 'disabled' : 'required'; ?>
+                                   style="width:100%; padding:8px; background:#2c2c2c; border:1px solid #333; color:#fff; border-radius:4px;">
+                        </div>
                     </div>
+
                     <button type="submit" class="btn" style="margin-bottom:0;">
-                        <i class="bi bi-download"></i> Export
+                        <i class="bi bi-download"></i> Export Events
                     </button>
                 </div>
             </form>
             
-            <?php if ($export_data !== null && count($export_data) > 0): ?>
+            <?php if ($export_data !== null): ?>
             <div style="margin-top:20px; padding:15px; background:#222; border-radius:4px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                     <h3>Exported Data (<?php echo count($export_data); ?> events)</h3>
+                    <?php if (count($export_data) > 0): ?>
                     <button type="button" class="btn btn-secondary btn-sm" onclick="downloadExportData()">
                         <i class="bi bi-file-earmark-arrow-down"></i> Download JSON
                     </button>
+                    <?php endif; ?>
                 </div>
                 <div style="background:#1a1a1a; border:1px solid #333; border-radius:4px; padding:10px; max-height:300px; overflow:auto; font-family:monospace; font-size:12px; white-space:pre-wrap; color:#0f0;">
-                    <?php echo htmlspecialchars(json_encode($export_data, JSON_PRETTY_PRINT)); ?>
+                    <?php echo htmlspecialchars(json_encode($export_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)); ?>
                 </div>
             </div>
             <?php endif; ?>
@@ -407,10 +481,10 @@ $default_end = date('Y-m-d', strtotime('+7 days'));
         <div class="card" style="margin-top:20px;">
             <h2>Import Events</h2>
             <p style="color:#aaa; margin-top:-10px; margin-bottom:15px;">
-                Import events from JSON. Each event object should have: <code>event_name</code>, <code>start_time</code>, <code>end_time</code>, <code>asset_id</code>, and optionally <code>id</code>, <code>tag_ids</code>, <code>priority</code>.
+                Import events from JSON. Each event object must have: <code>event_name</code>, <code>start_time</code>, <code>end_time</code>, <code>asset_id</code>, and optional <code>id</code>, <code>tag_ids</code>, <code>priority</code>.
             </p>
             <p style="color:#aaa; margin-top:-10px; margin-bottom:15px; font-size:0.9em;">
-                <strong>Upsert Logic:</strong> If <code>id</code> is provided and exists, the event is updated. If <code>id</code> is null/missing/0, a new event is created.
+                <strong>Upsert Logic:</strong> If an event contains an <code>id</code> that matches an existing event, that event will be updated. Otherwise (or if <code>id</code> is omitted, null, or 0), a new ID will be generated and the event added.
             </p>
             
             <form method="POST" action="import_export.php" enctype="multipart/form-data">
@@ -427,7 +501,7 @@ $default_end = date('Y-m-d', strtotime('+7 days'));
                     <label style="display:flex; align-items:center; gap:5px;">
                         <span style="color:#aaa; font-size:0.9em;">Or upload JSON file:</span>
                     </label>
-                    <input type="file" id="import_file" accept=".json" 
+                    <input type="file" id="import_file" name="import_file" accept=".json" 
                            onchange="loadImportFile(this.files[0])" 
                            style="margin-left:10px;">
                 </div>
@@ -439,7 +513,7 @@ $default_end = date('Y-m-d', strtotime('+7 days'));
                     <button type="button" class="btn btn-secondary" onclick="previewImportData()">
                         <i class="bi bi-eye"></i> Preview
                     </button>
-                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('import_json').value = '';">
+                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('import_json').value = ''; document.getElementById('import_file').value = '';">
                         <i class="bi bi-eraser"></i> Clear
                     </button>
                 </div>

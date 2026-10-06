@@ -11,22 +11,44 @@ header('Content-Type: application/json');
 // EXPORT: GET request with start/end date parameters
 // --------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $full_backup = isset($_GET['full_backup']) && ($_GET['full_backup'] === '1' || $_GET['full_backup'] === 'true');
+    $tag_id = isset($_GET['tag_id']) && $_GET['tag_id'] !== '' && $_GET['tag_id'] !== 'all' ? (int)$_GET['tag_id'] : null;
     $start_date = $_GET['start'] ?? null;
     $end_date = $_GET['end'] ?? null;
     
-    if (!$start_date || !$end_date) {
+    if (!$full_backup && (!$start_date || !$end_date)) {
         http_response_code(400);
-        echo json_encode(['error' => 'Missing required parameters: start and end dates']);
+        echo json_encode(['error' => 'Missing required parameters: specify start and end dates or choose full backup']);
         exit;
     }
     
     try {
-        // Validate date formats
-        $start_obj = new DateTime($start_date);
-        $end_obj = new DateTime($end_date);
+        $where_clauses = [];
+        $params = [];
         
-        // Query events within the date range
-        // Events that overlap with the range: start_time <= end_date AND end_time >= start_date
+        // Date range filter (if not full backup or if dates provided)
+        if (!$full_backup) {
+            new DateTime($start_date);
+            new DateTime($end_date);
+            $where_clauses[] = "e.start_time <= ? AND e.end_time >= ?";
+            $params[] = $end_date;
+            $params[] = $start_date;
+        } elseif ($start_date && $end_date) {
+            new DateTime($start_date);
+            new DateTime($end_date);
+            $where_clauses[] = "e.start_time <= ? AND e.end_time >= ?";
+            $params[] = $end_date;
+            $params[] = $start_date;
+        }
+        
+        // Tag filter
+        if ($tag_id !== null && $tag_id > 0) {
+            $where_clauses[] = "e.id IN (SELECT event_id FROM event_tags WHERE tag_id = ?)";
+            $params[] = $tag_id;
+        }
+        
+        $where_sql = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
+        
         $sql = "
             SELECT 
                 e.id,
@@ -36,18 +58,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 e.asset_id,
                 e.priority,
                 e.parent_event_id,
-                e.display_name,
-                e.filename_original,
                 GROUP_CONCAT(et.tag_id ORDER BY et.tag_id SEPARATOR ',') as tag_ids
             FROM events e
             LEFT JOIN event_tags et ON e.id = et.event_id
-            WHERE e.start_time <= ? AND e.end_time >= ?
+            $where_sql
             GROUP BY e.id
             ORDER BY e.start_time ASC
         ";
         
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$end_date, $start_date]);
+        $stmt->execute($params);
         $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Format the response

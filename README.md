@@ -26,11 +26,11 @@ A PHP/MySQL-based graphic scheduler for radio station automation. Designed for W
 - **Default Assets**: Set fallback graphics for each tag when no event is active
 
 ### Import/Export (New)
-- **Event Export**: Export events within a date range as JSON
+- **Event Export**: Export events as JSON by date range, tag filter, or as a full backup
 - **Bulk Import**: Import events from JSON with upsert logic
   - Events with existing ID > 0 are updated
-  - Events with null/missing/0 ID are created new
-- **Tag Preservation**: Tag associations maintained during import
+  - Events with null/missing/0 ID (or non-existent ID) generate a new ID and are added
+- **Tag Preservation**: Tag associations maintained during import and export
 
 ### Asset Management
 - **Upload**: Upload graphic files with tag association
@@ -239,8 +239,8 @@ The `Event-Refactor` branch contains experimental features that were being devel
 
 ### Importing Events
 1. Navigate to "Import / Export" (admin only)
-2. Export: Select date range, click Export, download JSON
-3. Import: Paste JSON or upload file, click Import
+2. Export: Select date range and optional tag, or select Full Backup; click Export to view and download JSON
+3. Import: Paste JSON or upload a `.json` file, click Import
 4. Review results for created/updated counts and errors
 
 ### JSON Import Format
