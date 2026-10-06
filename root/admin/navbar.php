@@ -38,10 +38,10 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
                         <i class="bi bi-calendar-plus"></i> Create Event
                     </a>
                 </li>
-                <?php if ($user_role === 'admin'): ?>
+                <?php if (has_role('admin')): ?>
                 <li>
                     <a href="import_export.php" class="<?php echo $current_page == 'import_export.php' ? 'active' : ''; ?>">
-                        <i class="bi bi-import-export"></i> Import / Export
+                        <i class="bi bi-arrow-down-up"></i> Import / Export
                     </a>
                 </li>
                 <?php endif; ?>
@@ -59,13 +59,14 @@ $user_id_nav = $_SESSION['user_id'] ?? 0;
                 </a>
                 <div class="dropdown-content">
                     <a href="profile.php"><i class="bi bi-gear"></i> Profile Settings</a>
-                    <?php if ($user_role === 'admin'): ?>
+                    <?php if (has_role('admin')): ?>
                         <a href="manage_users.php"><i class="bi bi-people"></i> Manage Users</a>
+                        <a href="import_export.php"><i class="bi bi-arrow-down-up"></i> Import / Export</a>
                     <?php endif; ?>
-                    <?php if ($user_role === 'admin' || $user_role === 'user'): ?>
+                    <?php if (has_role(['admin', 'user'])): ?>
                         <a href="default_assets.php"><i class="bi bi-images"></i> Default Assets</a>
                     <?php endif; ?>
-                    <?php if ($user_role === 'admin'): ?>
+                    <?php if (has_role('admin')): ?>
                         <a href="manage_tags.php"><i class="bi bi-tags"></i> Manage Tags</a>
                     <?php endif; ?>
                     <div class="dropdown-divider"></div>

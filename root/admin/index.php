@@ -506,7 +506,14 @@ if ($view == 'list') {
                 <?php endif; ?>
             </form>
 
-            <a href="create_event.php?<?php echo http_build_query($_GET); ?>" class="btn btn-secondary">+ New Event</a>
+            <div style="display:flex; gap:8px;">
+                <?php if (has_role('admin')): ?>
+                    <a href="import_export.php" class="btn btn-secondary" title="Import or Export Events">
+                        <i class="bi bi-arrow-down-up"></i> Import / Export
+                    </a>
+                <?php endif; ?>
+                <a href="create_event.php?<?php echo http_build_query($_GET); ?>" class="btn btn-secondary">+ New Event</a>
+            </div>
         </div>
 
         <!-- View Tabs -->
