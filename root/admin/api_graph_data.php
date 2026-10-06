@@ -1,6 +1,5 @@
 <?php
 require_once 'auth.php';
-require_once 'auth.php';
 // require_role(['admin', 'user']); // Allow all authenticated users
 
 header('Content-Type: application/json');
@@ -9,6 +8,48 @@ $storage_dir = __DIR__ . '/../data';
 $stream = $_GET['s'] ?? 'WRHU';
 $node = $_GET['n'] ?? 'Global';
 $period = $_GET['p'] ?? '-24h';
+
+$is_custom_range = false;
+$start_ts = null;
+$end_ts = null;
+
+if (!empty($_GET['start']) && !empty($_GET['end'])) {
+    $start_ts = is_numeric($_GET['start']) ? (int) $_GET['start'] : strtotime($_GET['start']);
+    $end_ts = is_numeric($_GET['end']) ? (int) $_GET['end'] : strtotime($_GET['end']);
+    if ($start_ts && $end_ts && $end_ts > $start_ts) {
+        $is_custom_range = true;
+    }
+}
+
+// Discover available streams from RRD files
+$available_streams = [];
+$stream_files = glob("$storage_dir/*_Global.rrd");
+if ($stream_files) {
+    foreach ($stream_files as $file) {
+        $b = basename($file, '_Global.rrd');
+        if ($b !== 'Network_Total') {
+            $available_streams[] = $b;
+        }
+    }
+}
+if (empty($available_streams)) {
+    // Fallback: check database tags
+    try {
+        require_once '../db_connect.php';
+        if (isset($pdo)) {
+            $stmt = $pdo->query("SELECT tag_name FROM tags ORDER BY tag_name");
+            $db_tags = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            if (!empty($db_tags)) {
+                $available_streams = $db_tags;
+            }
+        }
+    } catch (\Throwable $t) {
+        // Ignore fallback error
+    }
+    if (empty($available_streams)) {
+        $available_streams = ['WRHU', 'HAWC', 'SPEV'];
+    }
+}
 
 // Sanitize
 $stream = preg_replace('/[^a-zA-Z0-9_-]/', '', $stream);
@@ -62,19 +103,29 @@ if ($stream === 'Network_Total') {
 }
 
 if (empty($cmd_parts)) {
-    echo json_encode(['labels' => [], 'datasets' => []]);
+    echo json_encode([
+        'labels' => [],
+        'datasets' => [],
+        'available_streams' => $available_streams
+    ]);
     exit;
 }
 
 // Construct command
-// Added --maxrows 400 to limit data points
-$cmd = "rrdtool xport --start $period --end now --maxrows 400 " . implode(" ", $cmd_parts) . " " . implode(" ", $xport_parts);
+if ($is_custom_range) {
+    $cmd = "rrdtool xport --start $start_ts --end $end_ts --maxrows 400 " . implode(" ", $cmd_parts) . " " . implode(" ", $xport_parts);
+} else {
+    $cmd = "rrdtool xport --start $period --end now --maxrows 400 " . implode(" ", $cmd_parts) . " " . implode(" ", $xport_parts);
+}
 
 // Execute
 exec($cmd, $output, $return_var);
 
 if ($return_var !== 0) {
-    echo json_encode(['error' => 'RRDTool failed']);
+    echo json_encode([
+        'error' => 'RRDTool failed',
+        'available_streams' => $available_streams
+    ]);
     exit;
 }
 
@@ -117,8 +168,17 @@ if (preg_match_all('/<row>(.*?)<\/row>/si', $xml_string, $row_matches)) {
     $currentRow = 0;
     foreach ($row_matches[1] as $row_content) {
         // Calculate timestamp
-        // Timestamp for row i is start + step * (i + 1)
+        // Timestamp for row i is start + step * (currentRow + 1)
         $t = $start + ($step * ($currentRow + 1));
+
+        // When custom range is specified, strictly exclude any data outside the event window
+        if ($is_custom_range) {
+            if ($t < $start_ts || $t > $end_ts) {
+                $currentRow++;
+                continue;
+            }
+        }
+
         $labels[] = $t * 1000;
 
         // Extract values
@@ -145,6 +205,7 @@ if (preg_match_all('/<row>(.*?)<\/row>/si', $xml_string, $row_matches)) {
 
 echo json_encode([
     'labels' => $labels,
-    'datasets' => $datasets
+    'datasets' => $datasets,
+    'available_streams' => $available_streams
 ]);
 ?>

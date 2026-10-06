@@ -28,6 +28,9 @@ if ($is_admin || has_role('user')) {
     $allowed_tag_ids = array_column($tags, 'id');
 }
 
+$all_tags_stmt = $pdo->query("SELECT id, tag_name FROM tags");
+$tag_names_by_id = $all_tags_stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
 // Handle Actions (End Now, Delete)
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (isset($_POST['action']) && $_POST['action'] == 'end_now') {
@@ -315,9 +318,15 @@ if ($view == 'list') {
     <meta charset="UTF-8">
     <title>Dashboard - WRHU Encoder Scheduler</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-        // Auto-refresh every 60 seconds to update Live Monitor
-        setTimeout(function () {
+        // Auto-refresh every 60 seconds to update Live Monitor (paused when viewing stats modal)
+        setTimeout(function autoReload() {
+            var statsModal = document.getElementById('eventStatsModal');
+            if (statsModal && statsModal.style.display === 'block') {
+                setTimeout(autoReload, 30000);
+                return;
+            }
             window.location.reload();
         }, 60000);
 
@@ -601,8 +610,30 @@ if ($view == 'list') {
                                 ?>
                                 <span class="priority-badge <?php echo $prio_class; ?>"><?php echo $prio_label; ?></span>
                             </td>
-                            <td><?php echo htmlspecialchars($ev['event_name']); ?><?php if (!empty($ev['is_modified']))
-                                   echo ' <small style="color:orange;">(Modified)</small>'; ?>
+                            <td>
+                                <?php
+                                $ev_tag_names = '';
+                                if (isset($ev['tag_names'])) {
+                                    $ev_tag_names = $ev['tag_names'];
+                                } elseif (!empty($ev['tag_id']) && isset($tag_names_by_id[$ev['tag_id']])) {
+                                    $ev_tag_names = $tag_names_by_id[$ev['tag_id']];
+                                }
+                                ?>
+                                <?php if ($status == 'Past' && !$is_default_gap && isset($start) && isset($end)): ?>
+                                    <span class="event-name-stats-clickable" title="Click to view listener statistics" style="cursor:pointer; text-decoration:underline; font-weight:600; color:var(--accent-color);"
+                                        data-event-id="<?php echo htmlspecialchars($ev['id']); ?>"
+                                        data-event-name="<?php echo htmlspecialchars($ev['event_name'], ENT_QUOTES); ?>"
+                                        data-start-ts="<?php echo $start->getTimestamp(); ?>"
+                                        data-end-ts="<?php echo $end->getTimestamp(); ?>"
+                                        data-start-display="<?php echo htmlspecialchars($start_display); ?>"
+                                        data-end-display="<?php echo htmlspecialchars($end_display); ?>"
+                                        data-tag-names="<?php echo htmlspecialchars($ev_tag_names); ?>">
+                                        <?php echo htmlspecialchars($ev['event_name']); ?> <i class="bi bi-graph-up" style="font-size:0.8em;"></i>
+                                    </span>
+                                <?php else: ?>
+                                    <?php echo htmlspecialchars($ev['event_name']); ?>
+                                <?php endif; ?>
+                                <?php if (!empty($ev['is_modified'])) echo ' <small style="color:orange;">(Modified)</small>'; ?>
                             </td>
                             <td>
                                 <?php
@@ -728,7 +759,29 @@ if ($view == 'list') {
                                 $link_url = "edit_event.php?id=" . $ev['id'];
                             }
 
-                            echo '<a href="' . $link_url . '" class="cal-event priority-' . $ev['priority'] . ' ' . $status_class . '">' . $time . ' ' . $ev['event_name'] . '</a>';
+                            if ($status_class === 'status-past' && !$is_gap) {
+                                $start_local = (clone $start_utc)->setTimezone(new DateTimeZone('America/New_York'));
+                                $end_local = (clone $end_utc)->setTimezone(new DateTimeZone('America/New_York'));
+                                $start_display_str = $start_local->format('D, M j, Y g:i A');
+                                $end_display_str = $end_local->format('g:i A');
+                                $ev_tag_names = $ev['tag_names'] ?? ($tag_names_by_id[$ev['tag_id']] ?? '');
+
+                                echo '<div class="cal-event priority-' . $ev['priority'] . ' ' . $status_class . '" style="display:flex; justify-content:space-between; align-items:center; gap:4px;">';
+                                echo '<span class="event-name-stats-clickable" title="Click to view listener statistics" style="cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-grow:1;" ' .
+                                    'data-event-id="' . htmlspecialchars($ev['id']) . '" ' .
+                                    'data-event-name="' . htmlspecialchars($ev['event_name'], ENT_QUOTES) . '" ' .
+                                    'data-start-ts="' . $start_utc->getTimestamp() . '" ' .
+                                    'data-end-ts="' . $end_utc->getTimestamp() . '" ' .
+                                    'data-start-display="' . htmlspecialchars($start_display_str) . '" ' .
+                                    'data-end-display="' . htmlspecialchars($end_display_str) . '" ' .
+                                    'data-tag-names="' . htmlspecialchars($ev_tag_names) . '">';
+                                echo $time . ' <span style="text-decoration:underline;">' . htmlspecialchars($ev['event_name']) . '</span> <i class="bi bi-graph-up" style="font-size:0.75em;"></i>';
+                                echo '</span>';
+                                echo '<a href="' . $link_url . '" title="View event details" style="color:#777; flex-shrink:0; text-decoration:none;"><i class="bi bi-info-circle"></i></a>';
+                                echo '</div>';
+                            } else {
+                                echo '<a href="' . $link_url . '" class="cal-event priority-' . $ev['priority'] . ' ' . $status_class . '">' . $time . ' ' . $ev['event_name'] . '</a>';
+                            }
                         }
                     }
                     echo '</div>';
@@ -780,9 +833,34 @@ if ($view == 'list') {
                                 $link_url = "edit_event.php?id=" . $ev['id'];
                             }
 
-                            echo '<a href="' . $link_url . '" class="cal-event priority-' . $ev['priority'] . ' ' . $status_class . '" style="padding:5px; margin-bottom:5px;">';
-                            echo '<b>' . $start . '-' . $end . '</b><br>' . $ev['event_name'];
-                            echo '</a>';
+                            if ($status_class === 'status-past' && !$is_gap) {
+                                $start_local = (clone $start_utc)->setTimezone(new DateTimeZone('America/New_York'));
+                                $end_local = (clone $end_utc)->setTimezone(new DateTimeZone('America/New_York'));
+                                $start_display_str = $start_local->format('D, M j, Y g:i A');
+                                $end_display_str = $end_local->format('g:i A');
+                                $ev_tag_names = $ev['tag_names'] ?? ($tag_names_by_id[$ev['tag_id']] ?? '');
+
+                                echo '<div class="cal-event priority-' . $ev['priority'] . ' ' . $status_class . '" style="padding:5px; margin-bottom:5px;">';
+                                echo '<div style="display:flex; justify-content:space-between; align-items:center;">';
+                                echo '<b>' . $start . '-' . $end . '</b>';
+                                echo '<a href="' . $link_url . '" title="View event details" style="color:#777; text-decoration:none;"><i class="bi bi-info-circle"></i></a>';
+                                echo '</div>';
+                                echo '<div class="event-name-stats-clickable" title="Click to view listener statistics" style="cursor:pointer; text-decoration:underline; margin-top:3px; word-break:break-word; font-weight:500;" ' .
+                                    'data-event-id="' . htmlspecialchars($ev['id']) . '" ' .
+                                    'data-event-name="' . htmlspecialchars($ev['event_name'], ENT_QUOTES) . '" ' .
+                                    'data-start-ts="' . $start_utc->getTimestamp() . '" ' .
+                                    'data-end-ts="' . $end_utc->getTimestamp() . '" ' .
+                                    'data-start-display="' . htmlspecialchars($start_display_str) . '" ' .
+                                    'data-end-display="' . htmlspecialchars($end_display_str) . '" ' .
+                                    'data-tag-names="' . htmlspecialchars($ev_tag_names) . '">';
+                                echo htmlspecialchars($ev['event_name']) . ' <i class="bi bi-graph-up" style="font-size:0.8em;"></i>';
+                                echo '</div>';
+                                echo '</div>';
+                            } else {
+                                echo '<a href="' . $link_url . '" class="cal-event priority-' . $ev['priority'] . ' ' . $status_class . '" style="padding:5px; margin-bottom:5px;">';
+                                echo '<b>' . $start . '-' . $end . '</b><br>' . $ev['event_name'];
+                                echo '</a>';
+                            }
                         }
                     }
 
@@ -836,29 +914,51 @@ if ($view == 'list') {
                                         <span class="badge badge-live" style="margin-left:10px; font-size:0.7em;">HIGH PRIORITY</span>
                                     <?php endif; ?>
                                 </div>
-                                <div style="color:var(--accent-color);"><?php echo htmlspecialchars($ev['event_name']); ?></div>
-                                <div style="font-size:0.9em; color:#888;">
-                                    Tags:
-                                    <?php
-                                    if (isset($ev['tag_names'])) {
-                                        echo htmlspecialchars($ev['tag_names']);
-                                    } else {
-                                        // Check if it's a recurring instance
-                                        if (strpos($ev['id'], 'recur_') === 0) {
-                                            $parts = explode('_', $ev['id']);
-                                            $recur_id = (int) $parts[1];
-                                            $stmt_t = $pdo->prepare("SELECT t.tag_name FROM recurring_event_tags ret JOIN tags t ON ret.tag_id = t.id WHERE ret.recurring_event_id = ?");
-                                            $stmt_t->execute([$recur_id]);
-                                        } else {
-                                            // Standard event
-                                            $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
-                                            $stmt_t->execute([$ev['id']]);
-                                        }
+                                <?php
+                                $ev_tag_names = '';
+                                if (isset($ev['tag_names'])) {
+                                    $ev_tag_names = $ev['tag_names'];
+                                } else {
+                                    if (isset($ev['id']) && strpos($ev['id'], 'recur_') === 0) {
+                                        $parts = explode('_', $ev['id']);
+                                        $recur_id = (int) $parts[1];
+                                        $stmt_t = $pdo->prepare("SELECT t.tag_name FROM recurring_event_tags ret JOIN tags t ON ret.tag_id = t.id WHERE ret.recurring_event_id = ?");
+                                        $stmt_t->execute([$recur_id]);
                                         $tag_names = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
-                                        echo htmlspecialchars(implode(', ', $tag_names));
+                                        $ev_tag_names = implode(', ', $tag_names);
+                                    } elseif (!empty($ev['id'])) {
+                                        $stmt_t = $pdo->prepare("SELECT t.tag_name FROM event_tags et JOIN tags t ON et.tag_id = t.id WHERE et.event_id = ?");
+                                        $stmt_t->execute([$ev['id']]);
+                                        $tag_names = $stmt_t->fetchAll(PDO::FETCH_COLUMN);
+                                        $ev_tag_names = implode(', ', $tag_names);
+                                    } elseif (!empty($ev['tag_id']) && isset($tag_names_by_id[$ev['tag_id']])) {
+                                        $ev_tag_names = $tag_names_by_id[$ev['tag_id']];
                                     }
-                                    ?>
-                                    | Asset: <?php echo htmlspecialchars($ev['filename_original']); ?>
+                                }
+                                $start_local = (clone $start_utc)->setTimezone(new DateTimeZone('America/New_York'));
+                                $end_local = (clone $end_utc)->setTimezone(new DateTimeZone('America/New_York'));
+                                $start_display_str = $start_local->format('D, M j, Y g:i A');
+                                $end_display_str = $end_local->format('g:i A');
+                                ?>
+                                <div style="color:var(--accent-color); margin: 3px 0;">
+                                    <?php if ($status_class == 'status-past' && (!isset($ev['type']) || $ev['type'] != 'default_gap')): ?>
+                                        <span class="event-name-stats-clickable" title="Click to view listener statistics" style="cursor:pointer; text-decoration:underline; font-weight:600; font-size:1.05em;"
+                                            data-event-id="<?php echo htmlspecialchars($ev['id']); ?>"
+                                            data-event-name="<?php echo htmlspecialchars($ev['event_name'], ENT_QUOTES); ?>"
+                                            data-start-ts="<?php echo $start_utc->getTimestamp(); ?>"
+                                            data-end-ts="<?php echo $end_utc->getTimestamp(); ?>"
+                                            data-start-display="<?php echo htmlspecialchars($start_display_str); ?>"
+                                            data-end-display="<?php echo htmlspecialchars($end_display_str); ?>"
+                                            data-tag-names="<?php echo htmlspecialchars($ev_tag_names); ?>">
+                                            <?php echo htmlspecialchars($ev['event_name']); ?> <i class="bi bi-graph-up" style="font-size:0.85em;"></i>
+                                        </span>
+                                    <?php else: ?>
+                                        <?php echo htmlspecialchars($ev['event_name']); ?>
+                                    <?php endif; ?>
+                                </div>
+                                <div style="font-size:0.9em; color:#888;">
+                                    Tags: <?php echo htmlspecialchars($ev_tag_names); ?>
+                                    | Asset: <?php echo htmlspecialchars($ev['filename_original'] ?? ''); ?>
                                 </div>
                             </div>
                             <?php if (isset($ev['type']) && $ev['type'] == 'default_gap'): ?>
@@ -900,12 +1000,134 @@ if ($view == 'list') {
         </div>
     </div>
 
+    <!-- Event Listener Statistics Modal -->
+    <div id="eventStatsModal" class="modal">
+        <div class="modal-content event-stats-modal-content">
+            <span class="close" id="eventStatsCloseBtn" onclick="closeEventStatsModal()">&times;</span>
+            
+            <div style="margin-bottom: 15px;">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px; flex-wrap:wrap;">
+                    <h3 id="eventStatsTitle" style="margin:0; font-size:1.35rem; color:#fff;">Event Statistics</h3>
+                    <span class="badge" style="background:#555; font-size:0.75rem; vertical-align:middle;">PAST EVENT</span>
+                </div>
+                <div id="eventStatsTime" style="color:#aaa; font-size:0.95rem;"></div>
+                <div id="eventStatsTags" style="color:#888; font-size:0.85rem; margin-top:3px;"></div>
+            </div>
+
+            <!-- Stream Selector Bar -->
+            <div style="margin-bottom: 15px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; border-bottom:1px solid #333; padding-bottom:12px;">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <label style="font-size:0.8rem; color:#888; margin:0; font-weight:600; text-transform:uppercase;">Stream Channel:</label>
+                    <div id="eventStatsStreamPills" class="stream-pill-group" style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <!-- Dynamically populated stream buttons -->
+                    </div>
+                </div>
+                <div id="eventStatsDurationBadge" style="font-size:0.85rem; color:#4db8ff; font-weight:600;"></div>
+            </div>
+
+            <!-- Summary Metrics Bar -->
+            <div class="metrics-row" style="background:#222; border-radius:6px; padding:12px 15px; display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:10px; border:1px solid #333; margin-bottom:15px; text-align:center;">
+                <div>
+                    <div style="font-size:0.75rem; color:#888; text-transform:uppercase;">Peak Listeners</div>
+                    <div id="eventStatsPeak" style="font-size:1.6rem; font-weight:bold; color:#ff5555;">--</div>
+                </div>
+                <div>
+                    <div style="font-size:0.75rem; color:#888; text-transform:uppercase;">Average Listeners</div>
+                    <div id="eventStatsAvg" style="font-size:1.6rem; font-weight:bold; color:#4db8ff;">--</div>
+                </div>
+                <div>
+                    <div style="font-size:0.75rem; color:#888; text-transform:uppercase;">Minimum Listeners</div>
+                    <div id="eventStatsMin" style="font-size:1.6rem; font-weight:bold; color:#aaa;">--</div>
+                </div>
+                <div>
+                    <div style="font-size:0.75rem; color:#888; text-transform:uppercase;">Data Points</div>
+                    <div id="eventStatsPoints" style="font-size:1.6rem; font-weight:bold; color:#e0e0e0;">--</div>
+                </div>
+            </div>
+
+            <!-- Chart Container -->
+            <div style="position:relative; height:320px; background:#181818; border:1px solid #333; border-radius:6px; padding:10px;">
+                <div id="eventStatsLoading" style="display:none; position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(24,24,24,0.88); z-index:10; align-items:center; justify-content:center; flex-direction:column; gap:10px; border-radius:6px;">
+                    <div class="stats-spinner"></div>
+                    <span style="color:#aaa; font-size:0.9rem;">Fetching listener statistics from database...</span>
+                </div>
+                <div id="eventStatsEmpty" style="display:none; position:absolute; top:0; left:0; right:0; bottom:0; align-items:center; justify-content:center; color:#777; font-size:0.95rem; text-align:center; padding:20px; flex-direction:column;">
+                    <i class="bi bi-info-circle" style="font-size:2rem; display:block; margin-bottom:8px; opacity:0.5;"></i>
+                    <span>No listener statistics found in the database for this event time period.</span>
+                </div>
+                <canvas id="eventStatsChart" style="width:100%; height:100%;"></canvas>
+            </div>
+            <div style="margin-top:10px; font-size:0.75rem; color:#666; text-align:right;">
+                Source: Station RRD Metrics Database &bull; Window bounded strictly to event duration
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .event-stats-modal-content {
+            background-color: #1e1e1e;
+            max-width: 850px;
+            width: 90%;
+            margin: 5% auto;
+            border: 1px solid #333;
+            border-radius: 8px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+            padding: 24px;
+        }
+        .stream-pill {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #bbb;
+            padding: 4px 12px;
+            border-radius: 14px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .stream-pill:hover {
+            background: #383838;
+            color: #fff;
+        }
+        .stream-pill.active {
+            background: #4db8ff;
+            color: #000;
+            border-color: #4db8ff;
+        }
+        .stats-spinner {
+            width: 30px;
+            height: 30px;
+            border: 3px solid #333;
+            border-top-color: #4db8ff;
+            border-radius: 50%;
+            animation: stats-spin 1s linear infinite;
+        }
+        @keyframes stats-spin {
+            to { transform: rotate(360deg); }
+        }
+        .event-name-stats-clickable:hover {
+            opacity: 0.85;
+        }
+    </style>
+
     <script>
+        // Modal & Preview Handlers
         window.onclick = function (event) {
             if (event.target == document.getElementById('previewModal')) {
                 document.getElementById('previewModal').style.display = 'none';
             }
-        }
+            if (event.target == document.getElementById('eventStatsModal')) {
+                closeEventStatsModal();
+            }
+        };
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') {
+                const previewModal = document.getElementById('previewModal');
+                if (previewModal) previewModal.style.display = 'none';
+                closeEventStatsModal();
+            }
+        });
 
         // Preview Logic
         function showPreview(url, type) {
@@ -917,6 +1139,265 @@ if ($view == 'list') {
                 container.innerHTML = '<video src="' + url + '" controls autoplay class="preview-media"></video>';
             }
             document.getElementById('previewModal').style.display = 'block';
+        }
+
+        // Listener Statistics Logic for Past Events
+        let currentStatsEvent = null;
+        let currentStatsStream = null;
+        let eventStatsChartInstance = null;
+
+        document.addEventListener('click', function (e) {
+            const el = e.target.closest('.event-name-stats-clickable');
+            if (el) {
+                e.preventDefault();
+                e.stopPropagation();
+                openEventStats({
+                    id: el.dataset.eventId,
+                    name: el.dataset.eventName,
+                    startTs: parseInt(el.dataset.startTs, 10),
+                    endTs: parseInt(el.dataset.endTs, 10),
+                    startDisplay: el.dataset.startDisplay,
+                    endDisplay: el.dataset.endDisplay,
+                    tagNames: el.dataset.tagNames || ''
+                });
+            }
+        });
+
+        function openEventStats(eventData) {
+            currentStatsEvent = eventData;
+
+            document.getElementById('eventStatsTitle').innerText = eventData.name;
+            document.getElementById('eventStatsTime').innerText = eventData.startDisplay + ' – ' + eventData.endDisplay;
+            document.getElementById('eventStatsTags').innerText = eventData.tagNames ? ('Tag(s): ' + eventData.tagNames) : '';
+
+            const durSec = Math.max(0, eventData.endTs - eventData.startTs);
+            const durHrs = Math.floor(durSec / 3600);
+            const durMins = Math.floor((durSec % 3600) / 60);
+            let durText = '';
+            if (durHrs > 0) durText += durHrs + 'h ';
+            if (durMins > 0 || durHrs === 0) durText += durMins + 'm';
+            document.getElementById('eventStatsDurationBadge').innerText = 'Duration: ' + durText.trim();
+
+            // Default to tag stream if present, otherwise Network_Total
+            let initialStream = 'Network_Total';
+            if (eventData.tagNames) {
+                const parts = eventData.tagNames.split(',').map(s => s.trim());
+                if (parts.length > 0 && parts[0]) {
+                    initialStream = parts[0];
+                }
+            }
+            currentStatsStream = initialStream;
+
+            document.getElementById('eventStatsModal').style.display = 'block';
+            loadEventStats(currentStatsStream);
+        }
+
+        function closeEventStatsModal() {
+            const modal = document.getElementById('eventStatsModal');
+            if (modal) modal.style.display = 'none';
+            if (eventStatsChartInstance) {
+                eventStatsChartInstance.destroy();
+                eventStatsChartInstance = null;
+            }
+            currentStatsEvent = null;
+            currentStatsStream = null;
+        }
+
+        async function loadEventStats(stream) {
+            if (!currentStatsEvent) return;
+            currentStatsStream = stream;
+
+            const loadingEl = document.getElementById('eventStatsLoading');
+            const emptyEl = document.getElementById('eventStatsEmpty');
+            const chartCanvas = document.getElementById('eventStatsChart');
+            const pillsContainer = document.getElementById('eventStatsStreamPills');
+
+            loadingEl.style.display = 'flex';
+            emptyEl.style.display = 'none';
+
+            document.getElementById('eventStatsPeak').innerText = '--';
+            document.getElementById('eventStatsAvg').innerText = '--';
+            document.getElementById('eventStatsMin').innerText = '--';
+            document.getElementById('eventStatsPoints').innerText = '--';
+
+            try {
+                const url = `api_graph_data.php?s=${encodeURIComponent(stream)}&n=Global&start=${currentStatsEvent.startTs}&end=${currentStatsEvent.endTs}&nocache=${Date.now()}`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const data = await response.json();
+
+                if (data.error && (!data.datasets || data.datasets.length === 0)) {
+                    throw new Error(data.error);
+                }
+
+                // Render Stream Pills
+                const available = data.available_streams || ['WRHU', 'HAWC', 'SPEV'];
+                const allStreams = ['Network_Total', ...available.filter(s => s !== 'Network_Total')];
+
+                // If currently requested stream is not in allStreams, add it
+                if (!allStreams.includes(currentStatsStream)) {
+                    allStreams.push(currentStatsStream);
+                }
+
+                let pillsHtml = '';
+                allStreams.forEach(s => {
+                    const activeClass = (s === currentStatsStream) ? ' active' : '';
+                    const label = (s === 'Network_Total') ? 'Network Total' : s;
+                    pillsHtml += `<button type="button" class="stream-pill${activeClass}" onclick="loadEventStats('${s}')">${label}</button>`;
+                });
+                pillsContainer.innerHTML = pillsHtml;
+
+                // Enforce strict boundaries: ONLY data points between startTs and endTs
+                const startMs = currentStatsEvent.startTs * 1000;
+                const endMs = currentStatsEvent.endTs * 1000;
+
+                const filteredLabels = [];
+                const filteredDatasets = (data.datasets || []).map(ds => ({
+                    label: ds.label,
+                    data: []
+                }));
+
+                if (data.labels && data.labels.length > 0) {
+                    data.labels.forEach((t, idx) => {
+                        if (t >= startMs && t <= endMs) {
+                            filteredLabels.push(t);
+                            filteredDatasets.forEach((fds, dIdx) => {
+                                const val = (data.datasets[dIdx] && data.datasets[dIdx].data) ? data.datasets[dIdx].data[idx] : null;
+                                fds.data.push(val);
+                            });
+                        }
+                    });
+                }
+
+                const totalPoints = filteredLabels.length;
+                let validValues = [];
+                const isStacked = (currentStatsStream === 'Network_Total');
+
+                if (totalPoints > 0) {
+                    if (isStacked) {
+                        for (let i = 0; i < totalPoints; i++) {
+                            let sum = 0;
+                            let hasVal = false;
+                            filteredDatasets.forEach(ds => {
+                                if (ds.label !== 'Total Peak' && typeof ds.data[i] === 'number') {
+                                    sum += ds.data[i];
+                                    hasVal = true;
+                                }
+                            });
+                            if (hasVal) validValues.push(sum);
+                        }
+                    } else {
+                        const avgDs = filteredDatasets.find(ds => ds.label === 'Average') || filteredDatasets[0];
+                        if (avgDs) {
+                            avgDs.data.forEach(v => {
+                                if (typeof v === 'number') validValues.push(v);
+                            });
+                        }
+                    }
+                }
+
+                if (validValues.length === 0) {
+                    emptyEl.style.display = 'flex';
+                    if (eventStatsChartInstance) {
+                        eventStatsChartInstance.destroy();
+                        eventStatsChartInstance = null;
+                    }
+                    loadingEl.style.display = 'none';
+                    return;
+                }
+
+                // Compute summary metrics
+                let peak = Math.max(...validValues);
+                let min = Math.min(...validValues);
+                let avg = validValues.reduce((a, b) => a + b, 0) / validValues.length;
+
+                document.getElementById('eventStatsPeak').innerText = Math.ceil(peak).toLocaleString();
+                document.getElementById('eventStatsAvg').innerText = (Math.round(avg * 10) / 10).toLocaleString();
+                document.getElementById('eventStatsMin').innerText = Math.floor(min).toLocaleString();
+                document.getElementById('eventStatsPoints').innerText = validValues.length.toLocaleString();
+
+                // Prepare Chart.js
+                if (eventStatsChartInstance) {
+                    eventStatsChartInstance.destroy();
+                    eventStatsChartInstance = null;
+                }
+
+                let datasetsToDraw = filteredDatasets;
+                if (isStacked) {
+                    datasetsToDraw = filteredDatasets.filter(ds => ds.label !== 'Total Peak');
+                }
+
+                const colors = ['#4db8ff', '#ff5555', '#4caf50', '#ffeb3b', '#9c27b0'];
+                const chartDatasets = datasetsToDraw.map((ds, index) => {
+                    const color = (ds.label === 'Peak') ? '#ff5555' : (colors[index % colors.length]);
+                    return {
+                        label: ds.label,
+                        data: ds.data,
+                        borderColor: color,
+                        backgroundColor: color + '33',
+                        fill: isStacked || ds.label === 'Average',
+                        borderWidth: 2,
+                        pointRadius: totalPoints <= 25 ? 3 : 0,
+                        pointHoverRadius: 5,
+                        tension: 0.2
+                    };
+                });
+
+                const ctx = chartCanvas.getContext('2d');
+                eventStatsChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: filteredLabels.map(t => {
+                            const d = new Date(t);
+                            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        }),
+                        datasets: chartDatasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        scales: {
+                            x: {
+                                grid: { color: 'rgba(255,255,255,0.05)' },
+                                ticks: { color: '#888', maxTicksLimit: 8 }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: 'rgba(255,255,255,0.07)' },
+                                ticks: { color: '#888', precision: 0 },
+                                stacked: isStacked
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                labels: { color: '#ccc', boxWidth: 12 }
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            }
+                        },
+                        interaction: {
+                            mode: 'nearest',
+                            axis: 'x',
+                            intersect: false
+                        }
+                    }
+                });
+
+            } catch (err) {
+                console.error('Error loading event stats:', err);
+                emptyEl.innerHTML = `<i class="bi bi-info-circle" style="font-size:2rem; display:block; margin-bottom:8px; opacity:0.5;"></i>No listener statistics found in the database for this event time period.<br><small style="color:#666;">(${err.message || 'No data recorded'})</small>`;
+                emptyEl.style.display = 'flex';
+                if (eventStatsChartInstance) {
+                    eventStatsChartInstance.destroy();
+                    eventStatsChartInstance = null;
+                }
+            } finally {
+                loadingEl.style.display = 'none';
+            }
         }
     </script>
 </body>
